@@ -276,8 +276,10 @@ def handle_list(args: argparse.Namespace) -> int:
 
         # Build variants string with quantities
         variant_strs = []
+        card_total_qty = 0
         for card in sorted(card_variants, key=lambda c: c.variant):
             variant_strs.append(f"{card.variant}({card.quantity})")
+            card_total_qty += card.quantity
             total_quantity += card.quantity
 
         variants_display = ", ".join(variant_strs)
@@ -290,7 +292,7 @@ def handle_list(args: argparse.Namespace) -> int:
         lang = card_variants[0].language
 
         print(
-            f"{card_variants[0].set_id:<8} {card_variants[0].card_number:<6} {lang:<5} {name:<23} {variants_display:<18} {len(card_variants):<8} {rarity:<12}"
+            f"{card_variants[0].set_id:<8} {card_variants[0].card_number:<6} {lang:<5} {name:<23} {variants_display:<18} {card_total_qty:<8} {rarity:<12}"
         )
         total_unique += 1
 
