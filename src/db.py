@@ -56,18 +56,8 @@ CREATE INDEX IF NOT EXISTS idx_set_id ON cards(set_id);
 CREATE INDEX IF NOT EXISTS idx_tcgdex_id ON cards(tcgdex_id);
 CREATE INDEX IF NOT EXISTS idx_language ON cards(language);
 
--- Card metadata cache
-CREATE TABLE IF NOT EXISTS card_cache (
-    tcgdex_id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    set_name TEXT,
-    rarity TEXT,
-    types TEXT,
-    hp INTEGER,
-    available_variants TEXT NOT NULL,
-    image_url TEXT,
-    cached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+-- Composite index for analyzer lookups
+CREATE INDEX IF NOT EXISTS idx_cards_lookup ON cards(tcgdex_id, language);
 
 -- Set information cache
 CREATE TABLE IF NOT EXISTS set_cache (
@@ -132,17 +122,44 @@ def _migrate_add_language_column(conn: sqlite3.Connection) -> None:
         conn.commit()
 
 
+def _migrate_drop_card_cache(conn: sqlite3.Connection) -> None:
+    """Drop card_cache table as it's redundant with raw JSON files.
+
+    Args:
+        conn: Database connection
+    """
+    # Check if card_cache table exists
+    cursor = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='card_cache'"
+    )
+    if cursor.fetchone():
+        conn.execute("DROP TABLE card_cache")
+        print("✓ Migrated: Removed redundant card_cache table (using raw JSON instead)")
+
+
+def _migrate_add_composite_index(conn: sqlite3.Connection) -> None:
+    """Add composite index for analyzer performance.
+
+    Args:
+        conn: Database connection
+    """
+    # Check if index exists
+    cursor = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_cards_lookup'"
+    )
+    if not cursor.fetchone():
+        conn.execute("CREATE INDEX idx_cards_lookup ON cards(tcgdex_id, language)")
+        print("✓ Migrated: Added composite index for faster analyzer queries")
+
+
 def init_database(db_path: Optional[Path] = None) -> None:
     """Initialize database with schema.
 
     Args:
-        db_path: Optional custom database path (defaults to DB_PATH)
+        db_path: Optional custom database path
     """
-    path = db_path or get_db_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-
-    with get_connection(path) as conn:
-        # First run migration if needed (for existing databases)
+    with get_connection(db_path) as conn:
+        # Check if this is an existing database
         cursor = conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='cards'"
         )
@@ -150,6 +167,8 @@ def init_database(db_path: Optional[Path] = None) -> None:
 
         if table_exists:
             _migrate_add_language_column(conn)
+            _migrate_drop_card_cache(conn)
+            _migrate_add_composite_index(conn)
         else:
             # New database - create schema
             conn.executescript(CREATE_SCHEMA)
