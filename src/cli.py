@@ -131,15 +131,24 @@ async def handle_add(args: argparse.Namespace) -> int:
         # Fetch card info with specified language
         card_info = await fetch_and_cache_card(language, set_id, card_number)
 
-        # Validate variant is available
-        if not card_info.available_variants.is_valid(variant):
+        # Validate variant is available (unless --force is used)
+        if not args.force and not card_info.available_variants.is_valid(variant):
             available = ", ".join(card_info.available_variants.available_list())
             print(
                 f"Error: Variant '{variant}' not available for {card_info.name} ({card_info.tcgdex_id})\n"
-                f"Available variants: {available}",
+                f"Available variants: {available}\n"
+                f"Tip: If you have this physical card, use --force to override:\n"
+                f"     pkm add --force {args.card}",
                 file=sys.stderr,
             )
             return 1
+
+        # Show warning if forcing an unlisted variant
+        if args.force and not card_info.available_variants.is_valid(variant):
+            print(
+                f"⚠ Warning: Adding variant '{variant}' not listed in API for {card_info.name}",
+                file=sys.stderr,
+            )
 
         # Add to collection
         owned_card = db.add_card_variant(card_info.tcgdex_id, variant, language)
@@ -690,6 +699,12 @@ def create_parser() -> argparse.ArgumentParser:
     add_parser.add_argument(
         "card",
         help="Card in format: lang:set_id:card_number[:variant] (variant defaults to normal)",
+    )
+    add_parser.add_argument(
+        "--force",
+        "-f",
+        action="store_true",
+        help="Force add variant even if not listed in API (use when you have a physical card not in database)",
     )
 
     # Remove command
