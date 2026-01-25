@@ -37,8 +37,8 @@ def test_init_database(temp_db):
         tables = {row[0] for row in cursor.fetchall()}
 
         assert "cards" in tables
-        assert "card_cache" in tables
         assert "set_cache" in tables
+        # card_cache has been removed
 
 
 def test_add_card_variant_new(temp_db):
@@ -118,11 +118,12 @@ def test_get_owned_cards_filter(temp_db):
 
 
 def test_cache_and_get_card(temp_db):
-    """Test caching and retrieving card info."""
+    """Test caching and retrieving card info from cache."""
+    # card_cache has been removed - functions are now stubs
     card_info = CardInfo(
         tcgdex_id="me01-136",
         name="Furret",
-        set_name="Mega-Entwicklung",
+        set_name="Mega Evolution",
         rarity="Uncommon",
         types=["Colorless"],
         hp=110,
@@ -131,14 +132,10 @@ def test_cache_and_get_card(temp_db):
         cached_at=datetime.now(),
     )
 
-    db.cache_card(card_info)
+    db.cache_card(card_info)  # No-op now
 
     cached = db.get_cached_card("me01-136")
-    assert cached is not None
-    assert cached.name == "Furret"
-    assert cached.hp == 110
-    assert cached.available_variants.normal is True
-    assert cached.available_variants.reverse is True
+    assert cached is None  # Always returns None now
 
 
 def test_cache_sets(temp_db):
@@ -183,20 +180,7 @@ def test_collection_stats(temp_db):
     db.add_card_variant("me01-137", "normal", "de", 1)
     db.add_card_variant("sv06-045", "holo", "en", 5)  # sv06 has more total
 
-    # Cache some card info for rarity stats
-    db.cache_card(
-        CardInfo(
-            tcgdex_id="me01-136",
-            name="Furret",
-            set_name="Mega-Entwicklung",
-            rarity="Uncommon",
-            types=[],
-            hp=None,
-            available_variants=CardVariants(),
-            image_url=None,
-            cached_at=datetime.now(),
-        )
-    )
+    # Note: cache_card is now a no-op, rarity breakdown no longer available
 
     stats = db.get_collection_stats()
 
@@ -206,6 +190,7 @@ def test_collection_stats(temp_db):
     assert stats["most_collected_set"] == "sv06"
     assert stats["variant_breakdown"]["normal"] == 3
     assert stats["variant_breakdown"]["holo"] == 5
+    assert stats["rarity_breakdown"] == {}  # No longer available
 
 
 def test_parse_tcgdex_id(temp_db):

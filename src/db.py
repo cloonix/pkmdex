@@ -403,55 +403,34 @@ def get_card_ownership(tcgdex_id: str, language: str) -> tuple[int, list[str]]:
     return (total_qty, variants)
 
 
-# === Card Cache Operations ===
+# === Card Cache Operations (DEPRECATED - Use raw JSON files instead) ===
 
 
 def cache_card(card_info: CardInfo) -> None:
-    """Cache card metadata from API.
+    """DEPRECATED: Card caching removed. Use raw JSON files instead.
+
+    This function is kept as a no-op stub for backward compatibility.
+    Raw JSON files are saved automatically by the API layer.
 
     Args:
-        card_info: CardInfo instance to cache
+        card_info: CardInfo instance (ignored)
     """
-    with get_connection() as conn:
-        conn.execute(
-            """
-            INSERT OR REPLACE INTO card_cache 
-            (tcgdex_id, name, set_name, rarity, types, hp, available_variants, image_url, cached_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                card_info.tcgdex_id,
-                card_info.name,
-                card_info.set_name,
-                card_info.rarity,
-                json.dumps(card_info.types),
-                card_info.hp,
-                json.dumps(card_info.available_variants.to_json()),
-                card_info.image_url,
-                card_info.cached_at.isoformat(),
-            ),
-        )
-        conn.commit()
+    pass  # No-op - raw JSON is saved by api.py
 
 
 def get_cached_card(tcgdex_id: str) -> Optional[CardInfo]:
-    """Get cached card metadata.
+    """DEPRECATED: Card cache removed. Use config.load_raw_card_data() instead.
+
+    This function is kept as a stub that returns None for backward compatibility.
+    Callers should use config.load_raw_card_data(tcgdex_id) to get card data.
 
     Args:
         tcgdex_id: Full TCGdex ID
 
     Returns:
-        CardInfo if cached, None otherwise
+        None (cache no longer exists)
     """
-    with get_connection() as conn:
-        cursor = conn.execute(
-            "SELECT * FROM card_cache WHERE tcgdex_id = ?", (tcgdex_id,)
-        )
-        row = cursor.fetchone()
-
-        if row:
-            return CardInfo.from_db_row(row)
-        return None
+    return None  # Cache table removed
 
 
 # === Set Cache Operations ===
@@ -521,16 +500,15 @@ def get_set_cache_age() -> Optional[datetime]:
 
 
 def clear_card_cache() -> int:
-    """Clear all cached card metadata.
+    """DEPRECATED: Card cache removed.
+
+    This function is kept as a stub for backward compatibility.
+    Returns 0 since there is no cache to clear.
 
     Returns:
-        Number of cache entries cleared
+        0 (cache no longer exists)
     """
-    with get_connection() as conn:
-        cursor = conn.execute("DELETE FROM card_cache RETURNING *")
-        deleted_rows = cursor.fetchall()
-        conn.commit()
-        return len(deleted_rows)
+    return 0  # Cache table removed
 
 
 def clear_set_cache() -> int:
@@ -553,15 +531,6 @@ def get_cache_stats() -> dict:
         Dict with cache counts and age information
     """
     with get_connection() as conn:
-        # Card cache stats
-        cursor = conn.execute(
-            "SELECT COUNT(*), MIN(cached_at), MAX(cached_at) FROM card_cache"
-        )
-        row = cursor.fetchone()
-        card_count = row[0] or 0
-        card_oldest = datetime.fromisoformat(row[1]) if row[1] else None
-        card_newest = datetime.fromisoformat(row[2]) if row[2] else None
-
         # Set cache stats
         cursor = conn.execute(
             "SELECT COUNT(*), MIN(cached_at), MAX(cached_at) FROM set_cache"
@@ -571,14 +540,14 @@ def get_cache_stats() -> dict:
         set_oldest = datetime.fromisoformat(row[1]) if row[1] else None
         set_newest = datetime.fromisoformat(row[2]) if row[2] else None
 
-        return {
-            "card_cache_count": card_count,
-            "card_cache_oldest": card_oldest,
-            "card_cache_newest": card_newest,
-            "set_cache_count": set_count,
-            "set_cache_oldest": set_oldest,
-            "set_cache_newest": set_newest,
-        }
+    return {
+        "card_cache_count": 0,  # Deprecated - kept for compatibility
+        "card_cache_oldest": None,
+        "card_cache_newest": None,
+        "set_cache_count": set_count,
+        "set_cache_oldest": set_oldest,
+        "set_cache_newest": set_newest,
+    }
 
 
 # === Collection Statistics ===
@@ -595,9 +564,12 @@ def get_collection_stats() -> dict:
         cursor = conn.execute(
             """
             SELECT 
-                COUNT(DISTINCT tcgdex_id) as unique_cards,
-                SUM(quantity) as total_cards
+                cards.tcgdex_id,
+                cards.set_id,
+                COUNT(DISTINCT cards.variant) as variant_count,
+                SUM(cards.quantity) as total_quantity
             FROM cards
+            GROUP BY cards.tcgdex_id
             """
         )
         row = cursor.fetchone()
@@ -631,17 +603,8 @@ def get_collection_stats() -> dict:
         )
         variant_breakdown = {row[0]: row[1] for row in cursor.fetchall()}
 
-        # Rarity breakdown (requires join with cache)
-        cursor = conn.execute(
-            """
-            SELECT c.rarity, SUM(cards.quantity) as qty
-            FROM cards
-            LEFT JOIN card_cache c ON cards.tcgdex_id = c.tcgdex_id
-            WHERE c.rarity IS NOT NULL
-            GROUP BY c.rarity
-            """
-        )
-        rarity_breakdown = {row[0]: row[1] for row in cursor.fetchall()}
+        # Rarity breakdown (no longer available without card_cache)
+        rarity_breakdown = {}  # Deprecated - would need raw JSON parsing
 
         return {
             "unique_cards": unique_cards,
@@ -684,23 +647,6 @@ def export_to_json(output_path: Path) -> dict:
             for row in cursor.fetchall()
         ]
 
-        # Export card cache
-        cursor = conn.execute("SELECT * FROM card_cache")
-        card_cache = [
-            {
-                "tcgdex_id": row[0],
-                "name": row[1],
-                "set_name": row[2],
-                "rarity": row[3],
-                "types": row[4],
-                "hp": row[5],
-                "available_variants": row[6],
-                "image_url": row[7],
-                "cached_at": row[8],
-            }
-            for row in cursor.fetchall()
-        ]
-
         # Export set cache
         cursor = conn.execute("SELECT * FROM set_cache")
         set_cache = [
@@ -718,10 +664,9 @@ def export_to_json(output_path: Path) -> dict:
 
     # Create export data
     export_data = {
-        "version": "1.0",
         "exported_at": datetime.now().isoformat(),
+        "version": "1.0",
         "cards": cards,
-        "card_cache": card_cache,
         "set_cache": set_cache,
     }
 
@@ -730,10 +675,11 @@ def export_to_json(output_path: Path) -> dict:
         json.dump(export_data, f, indent=2, ensure_ascii=False)
 
     return {
-        "cards_count": len(cards),
-        "card_cache_count": len(card_cache),
-        "set_cache_count": len(set_cache),
         "file_path": str(output_path),
+        "cards_count": len(cards),
+        "card_cache_count": 0,  # Deprecated - kept for compatibility
+        "set_cache_count": len(set_cache),
+        "exported_at": export_data["exported_at"],
     }
 
 
@@ -761,10 +707,9 @@ def import_from_json(input_path: Path) -> dict:
     with get_connection() as conn:
         # Clear existing data
         conn.execute("DELETE FROM cards")
-        conn.execute("DELETE FROM card_cache")
         conn.execute("DELETE FROM set_cache")
 
-        # Import owned cards
+        # Import cards
         for card in import_data["cards"]:
             conn.execute(
                 """
@@ -784,6 +729,8 @@ def import_from_json(input_path: Path) -> dict:
                     card["updated_at"],
                 ),
             )
+
+        # Skip card_cache import - it's deprecated (kept for compatibility with old exports)
 
         # Import card cache
         for card in import_data.get("card_cache", []):
@@ -829,8 +776,7 @@ def import_from_json(input_path: Path) -> dict:
 
     return {
         "cards_count": len(import_data["cards"]),
-        "card_cache_count": len(import_data.get("card_cache", [])),
+        "card_cache_count": 0,  # Deprecated - kept for compatibility
         "set_cache_count": len(import_data.get("set_cache", [])),
-        "version": import_data["version"],
         "exported_at": import_data.get("exported_at"),
     }

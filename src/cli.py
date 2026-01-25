@@ -79,9 +79,7 @@ def parse_card_input(card_str: str) -> tuple[str, str, str, str]:
     return language, set_id, card_number, variant
 
 
-async def fetch_and_cache_card(
-    language: str, set_id: str, card_number: str
-) -> CardInfo:
+async def fetch_card_info(language: str, set_id: str, card_number: str) -> CardInfo:
     """Fetch card from API or cache.
 
     Args:
@@ -97,17 +95,9 @@ async def fetch_and_cache_card(
     """
     tcgdex_id = f"{set_id}-{card_number}"
 
-    # Check cache first
-    cached = db.get_cached_card(tcgdex_id)
-    if cached:
-        return cached
-
-    # Fetch from API with specified language
+    # Fetch from API with specified language (no caching needed, raw JSON is saved)
     api_client = api.get_api(language)
     card_info = await api_client.get_card(set_id, card_number)
-
-    # Cache it
-    db.cache_card(card_info)
 
     return card_info
 
@@ -129,7 +119,7 @@ async def handle_add(args: argparse.Namespace) -> int:
 
     try:
         # Fetch card info with specified language
-        card_info = await fetch_and_cache_card(language, set_id, card_number)
+        card_info = await fetch_card_info(language, set_id, card_number)
 
         # Validate variant is available (unless --force is used)
         if not args.force and not card_info.available_variants.is_valid(variant):
@@ -208,9 +198,9 @@ async def handle_rm(args: argparse.Namespace) -> int:
         card_number = card_number.strip()
         tcgdex_id = f"{set_id}-{card_number}"
 
-        # Try to get card name from cache for better output
-        card_info = db.get_cached_card(tcgdex_id)
-        card_name = card_info.name if card_info else tcgdex_id
+        # Try to get card name from raw JSON for better output
+        raw_data = config.load_raw_card_data(tcgdex_id)
+        card_name = raw_data.get("name", tcgdex_id) if raw_data else tcgdex_id
 
         # Remove all variants
         removed_count = db.remove_all_card_variants(tcgdex_id, language)
@@ -236,9 +226,9 @@ async def handle_rm(args: argparse.Namespace) -> int:
 
     tcgdex_id = f"{set_id}-{card_number}"
 
-    # Try to get card name from cache for better output
-    card_info = db.get_cached_card(tcgdex_id)
-    card_name = card_info.name if card_info else tcgdex_id
+    # Try to get card name from raw JSON for better output
+    raw_data = config.load_raw_card_data(tcgdex_id)
+    card_name = raw_data.get("name", tcgdex_id) if raw_data else tcgdex_id
 
     # Remove the variant
     result = db.remove_card_variant(tcgdex_id, variant, language)
@@ -325,10 +315,10 @@ def handle_list(args: argparse.Namespace) -> int:
 
     # Print each card
     for (tcgdex_id, language), card_variants in sorted(cards_by_id_lang.items()):
-        # Get card info from cache
-        card_info = db.get_cached_card(tcgdex_id)
-        name = card_info.name if card_info else "Unknown"
-        rarity = card_info.rarity if card_info else ""
+        # Get card info from raw JSON instead of cache
+        raw_data = config.load_raw_card_data(tcgdex_id)
+        name = raw_data.get("name", "Unknown") if raw_data else "Unknown"
+        rarity = raw_data.get("rarity", "") if raw_data else ""
 
         # Build variants string with quantities
         variant_strs = []
@@ -488,7 +478,7 @@ async def handle_info(args: argparse.Namespace) -> int:
 
     try:
         # Fetch card info
-        card_info = await fetch_and_cache_card(language, set_id, card_number)
+        card_info = await fetch_card_info(language, set_id, card_number)
 
         # Display card information
         print(f"Card: {card_info.name} (#{card_number})")
@@ -665,7 +655,6 @@ def handle_export(args: argparse.Namespace) -> int:
         result = db.export_to_json(output_path)
         print(f"✓ Exported collection to: {result['file_path']}")
         print(f"  Cards: {result['cards_count']}")
-        print(f"  Card cache: {result['card_cache_count']}")
         print(f"  Set cache: {result['set_cache_count']}")
         return 0
     except Exception as e:
@@ -702,7 +691,6 @@ def handle_import(args: argparse.Namespace) -> int:
         result = db.import_from_json(input_path)
         print(f"✓ Imported collection from: {input_path}")
         print(f"  Cards: {result['cards_count']}")
-        print(f"  Card cache: {result['card_cache_count']}")
         print(f"  Set cache: {result['set_cache_count']}")
         if result.get("exported_at"):
             print(f"  Original export date: {result['exported_at']}")
@@ -730,18 +718,6 @@ async def handle_cache(args: argparse.Namespace) -> int:
 
         print("Cache Statistics")
         print("─" * 60)
-
-        # Card cache
-        print("\nCard Cache:")
-        print(f"  Entries: {stats['card_cache_count']}")
-        if stats["card_cache_oldest"]:
-            print(
-                f"  Oldest:  {stats['card_cache_oldest'].strftime('%Y-%m-%d %H:%M:%S')}"
-            )
-        if stats["card_cache_newest"]:
-            print(
-                f"  Newest:  {stats['card_cache_newest'].strftime('%Y-%m-%d %H:%M:%S')}"
-            )
 
         # Set cache
         print("\nSet Cache:")
@@ -791,9 +767,7 @@ async def handle_cache(args: argparse.Namespace) -> int:
                 api_client = api.get_api(language)
                 card_info = await api_client.get_card(set_id, card_number)
 
-                # Cache the card
-                db.cache_card(card_info)
-
+                # Card is already saved as raw JSON by API layer
                 updated_count += 1
                 print(f"  ✓ Updated: {tcgdex_id} ({language})")
 
@@ -826,8 +800,7 @@ async def handle_cache(args: argparse.Namespace) -> int:
     # Clear caches
     if args.clear:
         if args.type in ("cards", "all"):
-            count = db.clear_card_cache()
-            print(f"✓ Cleared card cache: {count} entries")
+            print("ℹ Card cache no longer exists (using raw JSON files)")
 
         if args.type in ("sets", "all"):
             count = db.clear_set_cache()
