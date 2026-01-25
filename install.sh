@@ -127,7 +127,21 @@ install_app() {
 #!/bin/bash
 # pkmdex wrapper script
 INSTALL_DIR="$HOME/.local/share/pkmdex-bin"
-exec uv --directory "$INSTALL_DIR" run python -m src.cli "$@"
+
+# Find uv in common locations
+if command -v uv >/dev/null 2>&1; then
+    UV_CMD="uv"
+elif [ -f "$HOME/.cargo/bin/uv" ]; then
+    UV_CMD="$HOME/.cargo/bin/uv"
+elif [ -f "$HOME/.local/bin/uv" ]; then
+    UV_CMD="$HOME/.local/bin/uv"
+else
+    echo "Error: uv not found in PATH" >&2
+    echo "Please ensure uv is installed: https://github.com/astral-sh/uv" >&2
+    exit 1
+fi
+
+exec "$UV_CMD" --directory "$INSTALL_DIR" run python -m src.cli "$@"
 EOF
     
     chmod +x "$BIN_DIR/$APP_NAME"
