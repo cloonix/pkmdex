@@ -499,3 +499,185 @@ def get_collection_stats() -> dict:
             "variant_breakdown": variant_breakdown,
             "rarity_breakdown": rarity_breakdown,
         }
+
+
+# === Export/Import Operations ===
+
+
+def export_to_json(output_path: Path) -> dict:
+    """Export entire collection to JSON file.
+
+    Args:
+        output_path: Path to write JSON file
+
+    Returns:
+        Dict with export metadata (card count, timestamp, etc.)
+    """
+    with get_connection() as conn:
+        # Export owned cards
+        cursor = conn.execute("SELECT * FROM cards ORDER BY set_id, card_number")
+        cards = [
+            {
+                "id": row[0],
+                "set_id": row[1],
+                "card_number": row[2],
+                "tcgdex_id": row[3],
+                "variant": row[4],
+                "language": row[5],
+                "quantity": row[6],
+                "added_at": row[7],
+                "updated_at": row[8],
+            }
+            for row in cursor.fetchall()
+        ]
+
+        # Export card cache
+        cursor = conn.execute("SELECT * FROM card_cache")
+        card_cache = [
+            {
+                "tcgdex_id": row[0],
+                "name": row[1],
+                "set_name": row[2],
+                "rarity": row[3],
+                "types": row[4],
+                "hp": row[5],
+                "available_variants": row[6],
+                "image_url": row[7],
+                "cached_at": row[8],
+            }
+            for row in cursor.fetchall()
+        ]
+
+        # Export set cache
+        cursor = conn.execute("SELECT * FROM set_cache")
+        set_cache = [
+            {
+                "set_id": row[0],
+                "name": row[1],
+                "card_count": row[2],
+                "release_date": row[3],
+                "serie_id": row[4],
+                "serie_name": row[5],
+                "cached_at": row[6],
+            }
+            for row in cursor.fetchall()
+        ]
+
+    # Create export data
+    export_data = {
+        "version": "1.0",
+        "exported_at": datetime.now().isoformat(),
+        "cards": cards,
+        "card_cache": card_cache,
+        "set_cache": set_cache,
+    }
+
+    # Write to file
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump(export_data, f, indent=2, ensure_ascii=False)
+
+    return {
+        "cards_count": len(cards),
+        "card_cache_count": len(card_cache),
+        "set_cache_count": len(set_cache),
+        "file_path": str(output_path),
+    }
+
+
+def import_from_json(input_path: Path) -> dict:
+    """Import collection from JSON file, replacing existing database.
+
+    Args:
+        input_path: Path to JSON file to import
+
+    Returns:
+        Dict with import metadata (counts, etc.)
+
+    Raises:
+        ValueError: If JSON format is invalid
+        FileNotFoundError: If input file doesn't exist
+    """
+    # Read JSON file
+    with open(input_path, "r", encoding="utf-8") as f:
+        import_data = json.load(f)
+
+    # Validate format
+    if "version" not in import_data or "cards" not in import_data:
+        raise ValueError("Invalid export file format")
+
+    with get_connection() as conn:
+        # Clear existing data
+        conn.execute("DELETE FROM cards")
+        conn.execute("DELETE FROM card_cache")
+        conn.execute("DELETE FROM set_cache")
+
+        # Import owned cards
+        for card in import_data["cards"]:
+            conn.execute(
+                """
+                INSERT INTO cards 
+                (id, set_id, card_number, tcgdex_id, variant, language, quantity, added_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    card["id"],
+                    card["set_id"],
+                    card["card_number"],
+                    card["tcgdex_id"],
+                    card["variant"],
+                    card["language"],
+                    card["quantity"],
+                    card["added_at"],
+                    card["updated_at"],
+                ),
+            )
+
+        # Import card cache
+        for card in import_data.get("card_cache", []):
+            conn.execute(
+                """
+                INSERT INTO card_cache
+                (tcgdex_id, name, set_name, rarity, types, hp, available_variants, image_url, cached_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    card["tcgdex_id"],
+                    card["name"],
+                    card["set_name"],
+                    card["rarity"],
+                    card["types"],
+                    card["hp"],
+                    card["available_variants"],
+                    card["image_url"],
+                    card["cached_at"],
+                ),
+            )
+
+        # Import set cache
+        for set_info in import_data.get("set_cache", []):
+            conn.execute(
+                """
+                INSERT INTO set_cache
+                (set_id, name, card_count, release_date, serie_id, serie_name, cached_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    set_info["set_id"],
+                    set_info["name"],
+                    set_info["card_count"],
+                    set_info["release_date"],
+                    set_info["serie_id"],
+                    set_info["serie_name"],
+                    set_info["cached_at"],
+                ),
+            )
+
+        conn.commit()
+
+    return {
+        "cards_count": len(import_data["cards"]),
+        "card_cache_count": len(import_data.get("card_cache", [])),
+        "set_cache_count": len(import_data.get("set_cache", [])),
+        "version": import_data["version"],
+        "exported_at": import_data.get("exported_at"),
+    }

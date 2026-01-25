@@ -76,3 +76,6 @@ Thumbs.db
 *.tmp
 *.bak
 *.log
+
+# Export files
+pkmdex_export_*.json

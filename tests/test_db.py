@@ -239,3 +239,81 @@ def test_remove_all_card_variants(temp_db):
     # Try removing non-existent card
     removed = db.remove_all_card_variants("me01-999", "de")
     assert removed == 0
+
+
+def test_export_import_json(temp_db):
+    """Test exporting and importing collection to/from JSON."""
+    import tempfile
+    from pathlib import Path
+
+    # Add some test data
+    db.add_card_variant("me01-136", "normal", "de", 2)
+    db.add_card_variant("me01-136", "reverse", "de", 1)
+    db.add_card_variant("swsh3-045", "holo", "en", 3)
+
+    # Cache some card info
+    db.cache_card(
+        CardInfo(
+            tcgdex_id="me01-136",
+            name="Furret",
+            set_name="Mega-Entwicklung",
+            rarity="Uncommon",
+            types=["Colorless"],
+            hp=110,
+            available_variants=CardVariants(normal=True, reverse=True),
+            image_url="https://example.com/image.png",
+            cached_at=datetime.now(),
+        )
+    )
+
+    # Cache a set
+    db.cache_sets(
+        [
+            SetInfo(
+                set_id="me01",
+                name="Mega-Entwicklung",
+                card_count=132,
+                release_date="2024-01-26",
+                serie_id="me",
+                serie_name="Mega Evolution",
+                cached_at=datetime.now(),
+            )
+        ]
+    )
+
+    # Export to temporary file
+    with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
+        export_path = Path(f.name)
+
+    try:
+        # Export
+        result = db.export_to_json(export_path)
+        assert result["cards_count"] == 3
+        assert result["card_cache_count"] == 1
+        assert result["set_cache_count"] == 1
+        assert export_path.exists()
+
+        # Add more data to verify it gets replaced
+        db.add_card_variant("sv06-001", "normal", "fr", 5)
+
+        # Import (should replace everything)
+        result = db.import_from_json(export_path)
+        assert result["cards_count"] == 3
+        assert result["card_cache_count"] == 1
+        assert result["set_cache_count"] == 1
+
+        # Verify data matches original
+        owned = db.get_owned_cards()
+        assert len(owned) == 3
+
+        # Check specific card
+        de_cards = db.get_owned_cards(language="de")
+        assert len(de_cards) == 2
+
+        # Verify French card was removed by import
+        fr_cards = db.get_owned_cards(language="fr")
+        assert len(fr_cards) == 0
+
+    finally:
+        # Cleanup
+        export_path.unlink(missing_ok=True)

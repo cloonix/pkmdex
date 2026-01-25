@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import sys
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Optional
 
 from . import db, api
@@ -537,6 +538,76 @@ def handle_stats(args: argparse.Namespace) -> int:
     return 0
 
 
+def handle_export(args: argparse.Namespace) -> int:
+    """Handle 'export' command.
+
+    Args:
+        args: Parsed command-line arguments
+
+    Returns:
+        Exit code (0 for success)
+    """
+    # Generate filename with timestamp if not provided
+    if args.output:
+        output_path = Path(args.output)
+    else:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_path = Path(f"pkmdex_export_{timestamp}.json")
+
+    try:
+        result = db.export_to_json(output_path)
+        print(f"✓ Exported collection to: {result['file_path']}")
+        print(f"  Cards: {result['cards_count']}")
+        print(f"  Card cache: {result['card_cache_count']}")
+        print(f"  Set cache: {result['set_cache_count']}")
+        return 0
+    except Exception as e:
+        print(f"Error exporting collection: {e}", file=sys.stderr)
+        return 1
+
+
+def handle_import(args: argparse.Namespace) -> int:
+    """Handle 'import' command.
+
+    Args:
+        args: Parsed command-line arguments
+
+    Returns:
+        Exit code (0 for success)
+    """
+    input_path = Path(args.file)
+
+    if not input_path.exists():
+        print(f"Error: File not found: {input_path}", file=sys.stderr)
+        return 1
+
+    # Warn user about replacement
+    print(f"⚠ WARNING: This will REPLACE your current collection with data from:")
+    print(f"  {input_path}")
+
+    if not args.yes:
+        response = input("Continue? (yes/no): ").strip().lower()
+        if response not in ("yes", "y"):
+            print("Import cancelled.")
+            return 0
+
+    try:
+        result = db.import_from_json(input_path)
+        print(f"✓ Imported collection from: {input_path}")
+        print(f"  Cards: {result['cards_count']}")
+        print(f"  Card cache: {result['card_cache_count']}")
+        print(f"  Set cache: {result['set_cache_count']}")
+        if result.get("exported_at"):
+            print(f"  Original export date: {result['exported_at']}")
+        return 0
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+    except Exception as e:
+        print(f"Error importing collection: {e}", file=sys.stderr)
+        return 1
+
+
 def create_parser() -> argparse.ArgumentParser:
     """Create argument parser.
 
@@ -594,6 +665,25 @@ def create_parser() -> argparse.ArgumentParser:
     # Stats command
     stats_parser = subparsers.add_parser("stats", help="Show collection statistics")
 
+    # Export command
+    export_parser = subparsers.add_parser(
+        "export", help="Export collection to JSON file"
+    )
+    export_parser.add_argument(
+        "-o",
+        "--output",
+        help="Output file path (default: pkmdex_export_YYYYMMDD_HHMMSS.json)",
+    )
+
+    # Import command
+    import_parser = subparsers.add_parser(
+        "import", help="Import collection from JSON file (replaces current collection)"
+    )
+    import_parser.add_argument("file", help="JSON file to import")
+    import_parser.add_argument(
+        "-y", "--yes", action="store_true", help="Skip confirmation prompt"
+    )
+
     return parser
 
 
@@ -625,6 +715,10 @@ def main() -> None:
         exit_code = asyncio.run(handle_info(args))
     elif args.command == "stats":
         exit_code = handle_stats(args)
+    elif args.command == "export":
+        exit_code = handle_export(args)
+    elif args.command == "import":
+        exit_code = handle_import(args)
     else:
         parser.print_help()
         exit_code = 1
