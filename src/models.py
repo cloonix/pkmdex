@@ -162,6 +162,12 @@ class CardInfo:
         else:
             variants = CardVariants()
 
+        # Add quality and format to image URL
+        # TCGdex returns base URL like: https://assets.tcgdex.net/en/swsh/swsh3/136
+        # We need to add: /high.png for high quality PNG
+        if image_url and not image_url.endswith((".png", ".jpg", ".webp")):
+            image_url = f"{image_url}/high.png"
+
         return cls(
             tcgdex_id=tcgdex_id,
             name=name,
