@@ -72,103 +72,6 @@ CREATE TABLE IF NOT EXISTS set_cache (
 """
 
 
-def _migrate_add_language_column(conn: sqlite3.Connection) -> None:
-    """Migrate existing database to add language column.
-
-    Args:
-        conn: Database connection
-    """
-    # Check if language column exists
-    cursor = conn.execute("PRAGMA table_info(cards)")
-    columns = [row[1] for row in cursor.fetchall()]
-
-    if "language" not in columns:
-        # SQLite doesn't support ALTER TABLE with constraints, so we need to recreate
-        # First, rename the old table
-        conn.execute("ALTER TABLE cards RENAME TO cards_old")
-
-        # Create new table with language column
-        conn.execute("""
-            CREATE TABLE cards (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                set_id TEXT NOT NULL,
-                card_number TEXT NOT NULL,
-                tcgdex_id TEXT NOT NULL,
-                variant TEXT NOT NULL,
-                language TEXT NOT NULL DEFAULT 'de',
-                quantity INTEGER DEFAULT 1,
-                added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(tcgdex_id, variant, language)
-            )
-        """)
-
-        # Copy data from old table, adding 'de' as default language
-        conn.execute("""
-            INSERT INTO cards 
-            (id, set_id, card_number, tcgdex_id, variant, language, quantity, added_at, updated_at)
-            SELECT id, set_id, card_number, tcgdex_id, variant, 'de', quantity, added_at, updated_at
-            FROM cards_old
-        """)
-
-        # Drop old table
-        conn.execute("DROP TABLE cards_old")
-
-        # Recreate indexes
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_set_id ON cards(set_id)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_tcgdex_id ON cards(tcgdex_id)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_language ON cards(language)")
-
-        conn.commit()
-
-
-def _migrate_drop_card_cache(conn: sqlite3.Connection) -> None:
-    """Drop card_cache table as it's redundant with raw JSON files.
-
-    Args:
-        conn: Database connection
-    """
-    # Check if card_cache table exists
-    cursor = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='card_cache'"
-    )
-    if cursor.fetchone():
-        conn.execute("DROP TABLE card_cache")
-        print("✓ Migrated: Removed redundant card_cache table (using raw JSON instead)")
-
-
-def _migrate_add_composite_index(conn: sqlite3.Connection) -> None:
-    """Add composite index for analyzer performance.
-
-    Args:
-        conn: Database connection
-    """
-    # Check if index exists
-    cursor = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_cards_lookup'"
-    )
-    if not cursor.fetchone():
-        conn.execute("CREATE INDEX idx_cards_lookup ON cards(tcgdex_id, language)")
-        print("✓ Migrated: Added composite index for faster analyzer queries")
-
-
-def _migrate_drop_localized_names_table(conn: sqlite3.Connection) -> None:
-    """Drop localized_names table - replaced by language-specific raw JSON files.
-
-    Args:
-        conn: Database connection
-    """
-    # Check if table exists
-    cursor = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='localized_names'"
-    )
-    if cursor.fetchone():
-        conn.execute("DROP TABLE localized_names")
-        print(
-            "✓ Migrated: Removed localized_names table (using language-specific JSON instead)"
-        )
-
-
 def init_database(db_path: Optional[Path] = None) -> None:
     """Initialize database with schema.
 
@@ -176,21 +79,8 @@ def init_database(db_path: Optional[Path] = None) -> None:
         db_path: Optional custom database path
     """
     with get_connection(db_path) as conn:
-        # Check if this is an existing database
-        cursor = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='cards'"
-        )
-        table_exists = cursor.fetchone() is not None
-
-        if table_exists:
-            _migrate_add_language_column(conn)
-            _migrate_drop_card_cache(conn)
-            _migrate_add_composite_index(conn)
-            _migrate_drop_localized_names_table(conn)
-        else:
-            # New database - create schema
-            conn.executescript(CREATE_SCHEMA)
-
+        # Simply create schema - CREATE TABLE IF NOT EXISTS handles existing tables
+        conn.executescript(CREATE_SCHEMA)
         conn.commit()
 
 
