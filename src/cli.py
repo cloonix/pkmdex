@@ -172,6 +172,52 @@ async def handle_rm(args: argparse.Namespace) -> int:
     Returns:
         Exit code (0 for success)
     """
+    # For --all flag, we only need lang:set:card (no variant)
+    if args.all:
+        parts = args.card.split(":")
+        if len(parts) == 2:
+            # Legacy format: set:card (use default German)
+            set_id, card_number = parts
+            language = "de"
+        elif len(parts) == 3:
+            # New format: lang:set:card
+            language, set_id, card_number = parts
+        else:
+            print(
+                f"Error: Invalid format for --all: {args.card}\n"
+                f"Expected: <lang>:<set_id>:<card_number> or <set_id>:<card_number>\n"
+                f"Examples:\n"
+                f"  pkm rm --all de:me01:136\n"
+                f"  pkm rm --all me01:136 (uses German)",
+                file=sys.stderr,
+            )
+            return 1
+
+        language = language.strip().lower()
+        set_id = set_id.strip().lower()
+        card_number = card_number.strip()
+        tcgdex_id = f"{set_id}-{card_number}"
+
+        # Try to get card name from cache for better output
+        card_info = db.get_cached_card(tcgdex_id)
+        card_name = card_info.name if card_info else tcgdex_id
+
+        # Remove all variants
+        removed_count = db.remove_all_card_variants(tcgdex_id, language)
+
+        if removed_count > 0:
+            print(
+                f"✓ Removed all variants: {card_name} [{language}] ({removed_count} variant{'s' if removed_count != 1 else ''})"
+            )
+        else:
+            print(
+                f"Warning: {card_name} [{language}] not in collection",
+                file=sys.stderr,
+            )
+
+        return 0
+
+    # Normal single variant removal
     try:
         language, set_id, card_number, variant = parse_card_input(args.card)
     except ValueError as e:
@@ -516,7 +562,12 @@ def create_parser() -> argparse.ArgumentParser:
     rm_parser = subparsers.add_parser("rm", help="Remove a card from collection")
     rm_parser.add_argument(
         "card",
-        help="Card in format: lang:set_id:card_number[:variant] (variant defaults to normal)",
+        help="Card in format: lang:set_id:card_number[:variant] or just lang:set_id:card_number with --all",
+    )
+    rm_parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Remove all variants of the card (no variant needed in card spec)",
     )
 
     # List command

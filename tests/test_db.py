@@ -216,3 +216,26 @@ def test_parse_tcgdex_id(temp_db):
 
     with pytest.raises(ValueError):
         db.parse_tcgdex_id("invalid")
+
+
+def test_remove_all_card_variants(temp_db):
+    """Test removing all variants of a card."""
+    # Add multiple variants
+    db.add_card_variant("me01-136", "normal", "de", 2)
+    db.add_card_variant("me01-136", "reverse", "de", 3)
+    db.add_card_variant("me01-136", "holo", "de", 1)
+    db.add_card_variant("me01-136", "normal", "en", 1)  # Different language
+
+    # Remove all German variants
+    removed = db.remove_all_card_variants("me01-136", "de")
+    assert removed == 3  # Should remove 3 variants (normal, reverse, holo)
+
+    # Check only English remains
+    owned = db.get_owned_cards()
+    assert len(owned) == 1
+    assert owned[0].language == "en"
+    assert owned[0].variant == "normal"
+
+    # Try removing non-existent card
+    removed = db.remove_all_card_variants("me01-999", "de")
+    assert removed == 0

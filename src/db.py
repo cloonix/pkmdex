@@ -261,6 +261,26 @@ def remove_card_variant(
             return OwnedCard.from_db_row(row)
 
 
+def remove_all_card_variants(tcgdex_id: str, language: str = "de") -> int:
+    """Remove all variants of a card in a specific language.
+
+    Args:
+        tcgdex_id: Full TCGdex ID
+        language: Language code (e.g., 'de', 'en')
+
+    Returns:
+        Number of variants removed
+    """
+    with get_connection() as conn:
+        cursor = conn.execute(
+            "DELETE FROM cards WHERE tcgdex_id = ? AND language = ? RETURNING *",
+            (tcgdex_id, language),
+        )
+        deleted_rows = cursor.fetchall()
+        conn.commit()
+        return len(deleted_rows)
+
+
 def get_owned_cards(
     set_id: Optional[str] = None, language: Optional[str] = None
 ) -> list[OwnedCard]:
