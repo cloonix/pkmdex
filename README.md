@@ -87,6 +87,14 @@ pkm list me01                    # Show only me01 set
 # Get card information
 pkm info de:me01:136
 
+# Analyze your collection (using English raw JSON data)
+pkm analyze                      # Show all cards with details
+pkm analyze --stage Basic        # Filter by evolution stage  
+pkm analyze --type Fire          # Filter by Pokemon type
+pkm analyze --rarity Rare        # Filter by rarity
+pkm analyze --hp-min 100         # Filter by minimum HP
+pkm analyze --stats              # Show collection statistics
+
 # View statistics
 pkm stats
 
@@ -133,6 +141,7 @@ pkm <command> <lang>:<set_id>:<card_number>[:<variant>]
 | `list` | Display collection | `pkm list` or `pkm list de` or `pkm list me01` |
 | `sets` | Search/list available sets | `pkm sets mega` |
 | `info` | Get card information | `pkm info de:me01:136` or `pkm info de:me01:136 --raw` |
+| `analyze` | Analyze collection with filters | `pkm analyze --stage Stage1` or `pkm analyze --stats` |
 | `stats` | Show collection statistics | `pkm stats` |
 | `cache` | Manage API cache | `pkm cache` or `pkm cache --refresh` |
 | `export` | Export collection to JSON | `pkm export` or `pkm export -o backup.json` |
@@ -244,6 +253,96 @@ cat ~/.local/share/pkmdex/raw_data/cards/me01-136.json
 # Pretty-print with jq
 jq . ~/.local/share/pkmdex/raw_data/cards/me01-136.json
 ```
+
+## Collection Analysis
+
+The `analyze` command lets you filter and analyze your collection using the English raw JSON data. This provides powerful querying capabilities beyond basic listing.
+
+### Analysis Features
+
+```bash
+# Show all cards with details
+pkm analyze
+
+# Filter by evolution stage (Basic, Stage1, Stage2, etc.)
+pkm analyze --stage Stage1
+
+# Filter by Pokemon type (Fire, Water, Grass, etc.)
+pkm analyze --type Fire
+pkm analyze --type Psychic
+
+# Filter by rarity (Common, Uncommon, Rare, etc.)
+pkm analyze --rarity Rare
+
+# Filter by HP range
+pkm analyze --hp-min 100          # Cards with HP >= 100
+pkm analyze --hp-max 150          # Cards with HP <= 150
+pkm analyze --hp-min 100 --hp-max 150  # HP between 100-150
+
+# Filter by category (Pokemon, Trainer, Energy)
+pkm analyze --category Pokemon
+
+# Filter by language or set
+pkm analyze --language de         # Only German cards
+pkm analyze --set me01            # Only me01 set
+
+# Combine multiple filters
+pkm analyze --stage Stage1 --type Fire --hp-min 100
+
+# Show statistics instead of card list
+pkm analyze --stats
+pkm analyze --type Fire --stats
+```
+
+### Analysis Output
+
+**Card List Mode (default):**
+```
+Collection Analysis (2 cards)
+────────────────────────────────────────────────────────────────────────────────────────────────────
+ID           Name                      Stage      Type            HP   Rarity       Qty
+────────────────────────────────────────────────────────────────────────────────────────────────────
+me01-002     Ivysaur                   Stage1     Grass           110  Common       1  
+swsh3-136    Furret                    Stage1     Colorless       110  Uncommon     1  
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Total: 2 cards
+```
+
+**Statistics Mode (`--stats`):**
+```
+Collection Analysis (2 cards)
+────────────────────────────────────────────────────────────
+
+Total Cards:    2
+Total Quantity: 2
+Average HP:     110
+
+By Stage:
+  Stage1            2
+
+By Type:
+  Colorless         1
+  Grass             1
+
+By Rarity:
+  Common            1
+  Uncommon          1
+
+By Category:
+  Pokemon           2
+
+By Set:
+  me01              1
+  swsh3             1
+```
+
+### Important Notes
+
+- Analysis uses **English raw JSON data** for consistency
+- Run `pkm cache --update` to ensure you have English data for all cards
+- Filters are case-sensitive (use `Stage1`, not `stage1`)
+- Common stages: `Basic`, `Stage1`, `Stage2`, `VMAX`, `VSTAR`, etc.
+- Common types: `Fire`, `Water`, `Grass`, `Electric`, `Psychic`, `Fighting`, `Darkness`, `Metal`, `Fairy`, `Dragon`, `Colorless`
 
 
 ## Finding Set IDs

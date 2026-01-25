@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
-from . import db, api, config
+from . import db, api, config, analyzer
 from .models import CardInfo
 
 
@@ -827,6 +827,100 @@ async def handle_cache(args: argparse.Namespace) -> int:
     return 0
 
 
+def handle_analyze(args: argparse.Namespace) -> int:
+    """Handle 'analyze' command.
+
+    Args:
+        args: Parsed command-line arguments
+
+    Returns:
+        Exit code (0 for success)
+    """
+    # Build filter criteria
+    filter_criteria = analyzer.AnalysisFilter(
+        stage=args.stage,
+        type=args.type,
+        rarity=args.rarity,
+        hp_min=args.hp_min,
+        hp_max=args.hp_max,
+        category=args.category,
+        language=args.language,
+        set_id=args.set,
+    )
+
+    # Analyze collection
+    results = analyzer.analyze_collection(filter_criteria)
+
+    if not results:
+        print("No cards found matching the filter criteria.")
+        print("\n💡 Tip: Make sure you have raw JSON data for your cards.")
+        print("   Run 'pkm cache --update' to fetch English data for analysis.")
+        return 0
+
+    # Show statistics
+    if args.stats:
+        stats = analyzer.get_collection_statistics(results)
+
+        print(f"Collection Analysis ({len(results)} cards)")
+        print("─" * 60)
+
+        print(f"\nTotal Cards:    {stats['total_cards']}")
+        print(f"Total Quantity: {stats['total_quantity']}")
+
+        if stats["avg_hp"] > 0:
+            print(f"Average HP:     {stats['avg_hp']:.0f}")
+
+        if stats["by_stage"]:
+            print("\nBy Stage:")
+            for stage, count in sorted(stats["by_stage"].items()):
+                print(f"  {stage:15} {count:3}")
+
+        if stats["by_type"]:
+            print("\nBy Type:")
+            for card_type, count in sorted(stats["by_type"].items()):
+                print(f"  {card_type:15} {count:3}")
+
+        if stats["by_rarity"]:
+            print("\nBy Rarity:")
+            for rarity, count in sorted(stats["by_rarity"].items()):
+                print(f"  {rarity:15} {count:3}")
+
+        if stats["by_category"]:
+            print("\nBy Category:")
+            for category, count in sorted(stats["by_category"].items()):
+                print(f"  {category:15} {count:3}")
+
+        if stats["by_set"]:
+            print("\nBy Set:")
+            for set_id, count in sorted(stats["by_set"].items()):
+                print(f"  {set_id:15} {count:3}")
+
+        return 0
+
+    # Show card list
+    print(f"Collection Analysis ({len(results)} cards)")
+    print("─" * 100)
+    print(
+        f"{'ID':<12} {'Name':<25} {'Stage':<10} {'Type':<15} {'HP':<4} {'Rarity':<12} {'Qty':<3}"
+    )
+    print("─" * 100)
+
+    for card in results:
+        stage_str = card.stage or "—"
+        type_str = ", ".join(card.types[:2]) if card.types else "—"
+        hp_str = str(card.hp) if card.hp else "—"
+        rarity_str = card.rarity or "—"
+
+        print(
+            f"{card.tcgdex_id:<12} {card.name[:24]:<25} {stage_str:<10} {type_str:<15} {hp_str:<4} {rarity_str:<12} {card.quantity:<3}"
+        )
+
+    print("─" * 100)
+    print(f"Total: {len(results)} cards")
+
+    return 0
+
+
 def create_parser() -> argparse.ArgumentParser:
     """Create argument parser.
 
@@ -949,6 +1043,32 @@ def create_parser() -> argparse.ArgumentParser:
         help="Which cache to clear (default: all)",
     )
 
+    # Analyze command
+    analyze_parser = subparsers.add_parser(
+        "analyze", help="Analyze collection using raw JSON data"
+    )
+    analyze_parser.add_argument(
+        "--stage", help="Filter by evolution stage (e.g., Basic, Stage1, Stage2)"
+    )
+    analyze_parser.add_argument(
+        "--type", help="Filter by Pokemon type (e.g., Fire, Water, Grass)"
+    )
+    analyze_parser.add_argument(
+        "--rarity", help="Filter by rarity (e.g., Common, Rare)"
+    )
+    analyze_parser.add_argument("--hp-min", type=int, help="Minimum HP")
+    analyze_parser.add_argument("--hp-max", type=int, help="Maximum HP")
+    analyze_parser.add_argument(
+        "--category", help="Filter by category (e.g., Pokemon, Trainer)"
+    )
+    analyze_parser.add_argument(
+        "--language", help="Filter by language code (e.g., de, en)"
+    )
+    analyze_parser.add_argument("--set", help="Filter by set ID (e.g., me01)")
+    analyze_parser.add_argument(
+        "--stats", action="store_true", help="Show statistics instead of card list"
+    )
+
     return parser
 
 
@@ -988,6 +1108,8 @@ def main() -> None:
         exit_code = handle_import(args)
     elif args.command == "cache":
         exit_code = asyncio.run(handle_cache(args))
+    elif args.command == "analyze":
+        exit_code = handle_analyze(args)
     else:
         parser.print_help()
         exit_code = 1

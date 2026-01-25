@@ -193,11 +193,11 @@ def reset_config() -> Config:
 
 
 def save_raw_card_data(tcgdex_id: str, data: dict) -> Path:
-    """Save raw card data to JSON file.
+    """Save raw card data to JSON file (always in English).
 
     Args:
         tcgdex_id: Card ID (e.g., "swsh3-136")
-        data: Raw card data dictionary
+        data: Raw card data dictionary (should be English)
 
     Returns:
         Path to saved JSON file
@@ -217,7 +217,7 @@ def save_raw_card_data(tcgdex_id: str, data: dict) -> Path:
 
 
 def load_raw_card_data(tcgdex_id: str) -> Optional[dict]:
-    """Load raw card data from JSON file.
+    """Load raw card data from JSON file (English).
 
     Args:
         tcgdex_id: Card ID (e.g., "swsh3-136")
