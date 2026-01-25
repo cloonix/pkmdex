@@ -2,31 +2,44 @@
 
 ## Overview
 
-A CLI tool for managing German Pokemon TCG card collections using the TCGdex API. The tool allows users to track their physical cards with support for different variants (normal, reverse, holo, etc.) and stores the collection in a local SQLite database.
+A CLI tool for managing Pokemon TCG card collections in 11 languages using the TCGdex API. The tool allows users to track their physical cards with support for different variants (normal, reverse, holo, etc.) and stores the collection in a configurable local SQLite database.
 
 ## Problem Statement
 
-German Pokemon card collectors need a simple way to:
-1. Track their card collection locally
+Pokemon card collectors need a simple way to:
+1. Track their card collection locally across multiple languages
 2. Identify API set IDs from physical card markings (e.g., "MEG" → "me01")
 3. Manage different card variants (normal, reverse, holo)
 4. Query their collection efficiently
+5. Backup and restore their collection data
+6. Configure database location for cloud sync or backup drives
 
-Physical cards show set abbreviations like "MEG" but the TCGdex API uses internal IDs like "me01". Users need a way to discover the correct API set ID.
+Physical cards show set abbreviations like "MEG" or "SVI" but the TCGdex API uses internal IDs like "me01" or "sv01". Users need a way to discover the correct API set ID.
 
 ## Architecture
 
 ### Tech Stack
 
-- **Python 3.13** - Core language
+- **Python 3.13+** - Core language
 - **tcgdex-sdk** - Official Python SDK for TCGdex API
 - **SQLite3** - Built-in database (no external DB needed)
-- **argparse** - Built-in CLI argument parsing (minimal, no dependencies)
-- **Standard library only** for MVP - keeping it minimal
+- **uv** - Package manager (auto-installed by installer)
+- **argparse** - Built-in CLI argument parsing
+- **Standard library** - Minimal dependencies
 
-Optional future enhancements:
-- Rich/Tabulate for better table formatting
-- Click/Typer for advanced CLI features
+### Installation
+
+**One-line install:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/cloonix/pkmdex/main/install.sh | bash
+```
+
+**Installation locations:**
+- Executable: `~/.local/bin/pkm`
+- Application: `~/.local/share/pkmdex-bin/`
+- Config: `~/.config/pkmdex/config.json` (Linux/macOS)
+- Database: `~/.local/share/pkmdex/pokedex.db` (default, configurable)
+- Backups: `~/.local/share/pkmdex/backups/` (default, configurable)
 
 ### Project Structure
 
@@ -37,19 +50,39 @@ pkmdex/
 │   ├── cli.py              # CLI interface and command handlers
 │   ├── db.py               # Database operations and schema
 │   ├── api.py              # TCGdex API wrapper
+│   ├── config.py           # Configuration management
 │   └── models.py           # Data models
 ├── tests/
-│   ├── __init__.py
-│   ├── test_db.py
-│   ├── test_api.py
-│   └── test_cli.py
+│   ├── test_db.py          # Database tests
+│   ├── test_config.py      # Configuration tests
+│   └── ...
+├── install.sh              # Installation script
+├── uninstall.sh            # Uninstallation script
 ├── pyproject.toml          # Project metadata and dependencies
 ├── README.md
 ├── DESIGN.md               # This file
 └── AGENTS.md               # Instructions for AI agents
-
-Database stored at: ~/.pkmdex/pkmdex.db (auto-created)
 ```
+
+## Supported Languages
+
+The tool supports 11 languages from TCGdex API:
+
+| Code | Language | Native Name |
+|------|----------|-------------|
+| `de` | German | Deutsch |
+| `en` | English | English |
+| `fr` | French | Français |
+| `es` | Spanish | Español |
+| `it` | Italian | Italiano |
+| `pt` | Portuguese | Português |
+| `ja` | Japanese | 日本語 |
+| `ko` | Korean | 한국어 |
+| `zh-tw` | Chinese Traditional | 繁體中文 |
+| `th` | Thai | ไทย |
+| `id` | Indonesian | Bahasa Indonesia |
+
+Cards are stored with their language code, allowing collectors to track the same card in multiple languages.
 
 ## Database Schema
 
@@ -62,17 +95,19 @@ Stores owned cards in the collection.
 CREATE TABLE cards (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     set_id TEXT NOT NULL,           -- TCGdex set ID (e.g., "me01")
-    card_number TEXT NOT NULL,      -- Local card number (e.g., "136")
+    card_number TEXT NOT NULL,      -- Card number (e.g., "136")
     tcgdex_id TEXT NOT NULL,        -- Full TCGdex ID (e.g., "me01-136")
     variant TEXT NOT NULL,          -- Variant: normal, reverse, holo, firstEdition
+    language TEXT NOT NULL DEFAULT 'de', -- Language code (de, en, fr, etc.)
     quantity INTEGER DEFAULT 1,     -- Number of this variant owned
     added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(tcgdex_id, variant)      -- One entry per card+variant combo
+    UNIQUE(tcgdex_id, variant, language)  -- One entry per card+variant+language
 );
 
 CREATE INDEX idx_set_id ON cards(set_id);
 CREATE INDEX idx_tcgdex_id ON cards(tcgdex_id);
+CREATE INDEX idx_language ON cards(language);
 ```
 
 #### `card_cache`
@@ -81,16 +116,22 @@ Caches card metadata from TCGdex API to reduce API calls.
 ```sql
 CREATE TABLE card_cache (
     tcgdex_id TEXT PRIMARY KEY,     -- Full TCGdex ID (e.g., "me01-136")
-    name TEXT NOT NULL,             -- Card name in German
-    set_name TEXT,                  -- Set name in German
-    rarity TEXT,                    -- Card rarity
+    name TEXT NOT NULL,             -- Card name in requested language
+    set_name TEXT,                  -- Set name
+    rarity TEXT,                    -- Card rarity (always in English)
     types TEXT,                     -- JSON array of types
     hp INTEGER,                     -- Hit points (Pokemon only)
-    available_variants TEXT,        -- JSON object of available variants
-    image_url TEXT,                 -- Card image URL
+    available_variants TEXT NOT NULL, -- JSON object of available variants
+    image_url TEXT,                 -- High quality PNG URL
     cached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 ```
+
+**Note:** Rarity is always fetched from the English API to maintain consistency, even when adding cards in other languages.
+
+**Image URLs:** Stored as high-quality PNG format:
+- Format: `https://assets.tcgdex.net/{lang}/{serie}/{set}/{card}/high.png`
+- Example: `https://assets.tcgdex.net/en/swsh/swsh3/136/high.png`
 
 #### `set_cache`
 Caches set information to help users discover set IDs.
@@ -98,7 +139,7 @@ Caches set information to help users discover set IDs.
 ```sql
 CREATE TABLE set_cache (
     set_id TEXT PRIMARY KEY,        -- TCGdex set ID (e.g., "me01")
-    name TEXT NOT NULL,             -- German set name
+    name TEXT NOT NULL,             -- Set name
     card_count INTEGER,             -- Total cards in set
     release_date TEXT,              -- Release date
     serie_id TEXT,                  -- Serie ID (e.g., "me")
@@ -107,121 +148,193 @@ CREATE TABLE set_cache (
 );
 ```
 
+## Configuration
+
+### Config File
+
+Location: `~/.config/pkmdex/config.json` (Linux/macOS) or `%APPDATA%/pkmdex/config.json` (Windows)
+
+```json
+{
+  "db_path": "/path/to/pokedex.db",
+  "backups_path": "/path/to/backups"
+}
+```
+
+### Configuration Commands
+
+```bash
+# Show current configuration
+pkm setup --show
+
+# Set custom database path (directory or file)
+pkm setup --path ~/Documents/pokemon
+pkm setup --path /mnt/backup/cards.db
+
+# Reset to defaults
+pkm setup --reset
+```
+
 ## CLI Interface
 
 ### Command Syntax
 
-The CLI uses a concise, typing-friendly format:
+The CLI uses a concise, typing-friendly format with language support:
 
 ```bash
-# Format: pkm <command> <set_id>:<card_number>:<variant>[,<variant>...]
+# Format: pkm <command> <lang>:<set_id>:<card_number>[:<variant>]
 
-# Add single variant
-pkm add me01:136:normal
+# Add cards (language-specific)
+pkm add de:me01:136              # German card, defaults to normal variant
+pkm add de:me01:136:holo         # German card, holo variant
+pkm add en:swsh3:136:reverse     # English card, reverse variant
 
-# Add multiple variants of same card
-pkm add me01:136:normal,reverse
+# Remove cards
+pkm rm de:me01:136               # Remove normal variant
+pkm rm de:me01:136:holo          # Remove holo variant
+pkm rm --all de:me01:136         # Remove all variants
 
-# Remove variants
-pkm rm me01:136:normal
+# List collection
+pkm list                         # All cards
+pkm list de                      # Only German cards
+pkm list me01                    # Only me01 set
 
-# Add additional copy (accumulates)
-pkm add me01:136:normal  # If exists, increments quantity
+# Search for sets
+pkm sets mega                    # Search sets by name
+pkm sets                         # List all sets
 
-# List all cards
-pkm list
-
-# List cards from specific set
-pkm list me01
-
-# Search for sets (when you don't know the set ID)
-pkm sets mega          # Search sets by name
-pkm sets               # List all sets
-
-# Get card info without adding
-pkm info me01:136
+# Get card info
+pkm info de:me01:136
 
 # Show stats
 pkm stats
+
+# Export/Import
+pkm export                       # Export to backups directory
+pkm export -o backup.json        # Custom export path
+pkm import backup.json           # Import collection
+pkm import -y backup.json        # Skip confirmation
+
+# Configuration
+pkm setup --show                 # Show config
+pkm setup --path ~/pokemon       # Set custom path
+pkm setup --reset                # Reset to defaults
 ```
 
 ### Command Details
 
-#### `add` - Add cards to collection
+#### `setup` - Configure database location
 
 ```bash
-pkm add <set_id>:<card_number>:<variants>
+pkm setup [--show | --reset | --path PATH]
 
-Arguments:
-  set_id      - TCGdex set ID (e.g., me01, sv06)
-  card_number - Card number in set (e.g., 136, 001)
-  variants    - Comma-separated variants: normal, reverse, holo, firstEdition
+Flags:
+  --show     - Display current configuration
+  --reset    - Reset to default OS-specific paths
+  --path     - Set custom database directory or file path
 
 Examples:
-  pkm add me01:136:normal
-  pkm add me01:136:normal,reverse
-  pkm add sv06:045:holo
+  pkm setup --show
+  pkm setup --path ~/Documents/pokemon
+  pkm setup --path /mnt/backup/pokemon/cards.db
+  pkm setup --reset
 ```
 
 **Behavior:**
-1. Parse input format
-2. Query TCGdex API for card info (use German language)
-3. Validate card exists
-4. Check if variant is available for this card
-5. If card+variant exists in DB: increment quantity
-6. If new: insert with quantity=1
-7. Cache card metadata
-8. Display success message with card name and image URL
+- `--show`: Displays database path, backups path, and config file location
+- `--path`: Sets custom path, creates backups subdirectory automatically
+- `--reset`: Returns to default OS-specific paths
+- Configuration is stored in OS-specific config directory
+
+#### `add` - Add cards to collection
+
+```bash
+pkm add <lang>:<set_id>:<card_number>[:<variant>]
+
+Arguments:
+  lang        - Language code (de, en, fr, es, it, pt, ja, ko, zh-tw, th, id)
+  set_id      - TCGdex set ID (e.g., me01, sv06)
+  card_number - Card number in set (e.g., 136, 001)
+  variant     - Optional: normal (default), reverse, holo, firstEdition
+
+Examples:
+  pkm add de:me01:136              # German, normal variant
+  pkm add de:me01:136:holo         # German, holo variant
+  pkm add en:swsh3:136:reverse     # English, reverse variant
+  pkm add fr:sv06:045              # French, defaults to normal
+```
+
+**Behavior:**
+1. Parse input format (validates language code)
+2. Query TCGdex API for card info in specified language
+3. Fetch rarity from English API (for consistency)
+4. Validate card exists
+5. Check if variant is available for this card
+6. If card+variant+language exists in DB: increment quantity
+7. If new: insert with quantity=1
+8. Cache card metadata with high-quality PNG image URL
+9. Display success message with card name and image URL
 
 #### `rm` - Remove cards from collection
 
 ```bash
-pkm rm <set_id>:<card_number>:<variants>
+pkm rm [--all] <lang>:<set_id>:<card_number>[:<variant>]
 
 Arguments:
-  Same as 'add'
+  --all       - Optional flag: remove all variants of the card
+  lang        - Language code
+  set_id      - TCGdex set ID
+  card_number - Card number
+  variant     - Optional: specific variant to remove
 
 Examples:
-  pkm rm me01:136:normal
-  pkm rm me01:136:normal,reverse
+  pkm rm de:me01:136              # Remove normal variant (qty -1)
+  pkm rm de:me01:136:holo         # Remove holo variant
+  pkm rm --all de:me01:136        # Remove all variants at once
 ```
 
 **Behavior:**
 1. Parse input
-2. Find matching card+variant in DB
-3. Decrement quantity by 1
-4. If quantity reaches 0: delete record
-5. Display updated quantity or "Removed" message
+2. Find matching card+variant+language in DB
+3. If `--all` flag: delete all variants for this card+language combo
+4. Otherwise: decrement quantity by 1
+5. If quantity reaches 0: delete record
+6. Display updated quantity or "Removed" message
 
 #### `list` - Display collection
 
 ```bash
-pkm list [set_id]
+pkm list [language_or_set_id]
 
 Arguments:
-  set_id - Optional: filter by set ID
+  language_or_set_id - Optional: filter by language code or set ID
 
 Examples:
-  pkm list           # All cards
-  pkm list me01      # Only cards from me01
+  pkm list        # All cards
+  pkm list de     # Only German cards
+  pkm list en     # Only English cards
+  pkm list me01   # Only me01 set
 ```
 
-**Output Format (compact table):**
+**Output Format:**
 ```
-Set    Card#  Name              Variants             Qty  Rarity
-─────────────────────────────────────────────────────────────────
-me01   136    Furret            normal, reverse      2/1  Uncommon
-me01   045    Pikachu           holo                 1    Rare
-sv06   012    Charizard ex      normal               3    Ultra Rare
-─────────────────────────────────────────────────────────────────
-Total: 3 unique cards, 6 total cards
+Set      Card#  Lang  Name                      Qty   Rarity          Variants
+──────────────────────────────────────────────────────────────────────────────
+me01     001    de    Bisasam                   1     Common          normal(1)
+me01     003    de    Mega-Bisaflor-ex          1     Double rare     holo(1)
+sv06     045    fr    Poissoroy                 1     Common          reverse(1)
+──────────────────────────────────────────────────────────────────────────────
+Total: 3 unique cards, 3 total cards
 ```
 
-**Implementation:**
-- Query cards from DB with JOIN to card_cache for metadata
-- Group by tcgdex_id to show all variants on one line
-- Sort by set_id, then card_number
-- Use simple ASCII table format (or Rich if we add it later)
+**Columns:**
+- Set: TCGdex set ID
+- Card#: Card number
+- Lang: Language code
+- Name: Card name in its language
+- Qty: Total quantity across all variants
+- Rarity: Card rarity (always in English)
+- Variants: variant(quantity) format
 
 #### `sets` - Search and list sets
 
@@ -229,53 +342,50 @@ Total: 3 unique cards, 6 total cards
 pkm sets [search_term]
 
 Arguments:
-  search_term - Optional: search in set names
+  search_term - Optional: filter sets by name (case-insensitive)
 
 Examples:
-  pkm sets              # List all German sets
-  pkm sets mega         # Search for "mega" in set names
-  pkm sets MEG          # Search for "MEG"
+  pkm sets           # List all sets
+  pkm sets mega      # Search for "mega" in set names
+  pkm sets scarlet   # Search for "scarlet"
 ```
 
 **Output Format:**
 ```
-Set ID    Name                          Cards  Released
-──────────────────────────────────────────────────────────
-me01      Mega-Entwicklung             132    2024-01-26
-me02      Fatale Flammen               106    2024-03-22
-mep       MEP Black Star Promos        34     -
-──────────────────────────────────────────────────────────
+Set ID    Name                      Cards  Released
+────────────────────────────────────────────────────
+me01      Mega-Entwicklung          132    2024-01-26
+me02      Fatale Flammen            106    2024-03-22
 ```
 
 **Behavior:**
-1. Check set_cache for freshness (cache for 24h)
-2. If stale or empty: fetch all sets from API (German language)
-3. Store in set_cache
-4. Filter by search term if provided (case-insensitive)
-5. Display results
-
-**This solves the "MEG" problem:** User can run `pkm sets MEG` to discover that "me01" or "me02" contains "Mega" in the name.
+1. Fetch all sets from TCGdex API (or from cache if recent)
+2. Filter by search term if provided
+3. Display in table format
+4. Cache results for faster subsequent queries
 
 #### `info` - Get card information
 
 ```bash
-pkm info <set_id>:<card_number>
+pkm info <lang>:<set_id>:<card_number>
 
 Arguments:
+  lang        - Language code
   set_id      - TCGdex set ID
   card_number - Card number
 
 Examples:
-  pkm info me01:136
+  pkm info de:me01:136
+  pkm info en:swsh3:136
 ```
 
-**Output:**
+**Output Format:**
 ```
 Card: Furret (#136)
-Set:  Mega-Entwicklung (me01)
+Set:  Darkness Ablaze (swsh3)
 Type: Colorless
 HP:   110
-Rarity: Uncommon
+Rarity: Common
 
 Available Variants:
   ✓ normal
@@ -287,319 +397,332 @@ In Collection:
   • normal: 2
   • reverse: 1
 
-Image: https://assets.tcgdex.net/de/me/me01/136
+Image: https://assets.tcgdex.net/en/swsh/swsh3/136/high.png
 ```
 
 #### `stats` - Collection statistics
 
 ```bash
 pkm stats
+
+Examples:
+  pkm stats
 ```
 
-**Output:**
+**Output Format:**
 ```
 Collection Statistics
-────────────────────────────────────
-Total unique cards:     45
-Total cards (all):      127
-Sets represented:       8
-Most collected set:     me01 (23 cards)
+────────────────────────────────────────
+Total unique cards:     25
+Total cards (all):      47
+Sets represented:       5
+Most collected set:     me01 (12 cards)
 
 Variants breakdown:
-  Normal:               89
-  Reverse:              28
-  Holo:                 10
-  First Edition:        0
+  Normal               20
+  Reverse              15
+  Holo                 12
 
 Rarity breakdown:
-  Common:               45
-  Uncommon:             38
-  Rare:                 25
-  Ultra Rare:           12
-  Secret Rare:          7
+  Common               15
+  Uncommon             8
+  Rare                 2
 ```
+
+#### `export` - Export collection
+
+```bash
+pkm export [-o OUTPUT_FILE]
+
+Arguments:
+  -o, --output - Optional: custom output file path
+
+Examples:
+  pkm export                    # Export to backups/pkmdex_export_YYYYMMDD_HHMMSS.json
+  pkm export -o my_backup.json  # Custom filename
+```
+
+**Export Format (JSON):**
+```json
+{
+  "version": "1.0",
+  "exported_at": "2026-01-25T14:30:00.123456",
+  "cards": [...],
+  "card_cache": [...],
+  "set_cache": [...]
+}
+```
+
+**Default Location:** `<database_dir>/backups/pkmdex_export_YYYYMMDD_HHMMSS.json`
+
+#### `import` - Import collection
+
+```bash
+pkm import [-y] <file>
+
+Arguments:
+  file        - JSON file to import
+  -y, --yes   - Skip confirmation prompt
+
+Examples:
+  pkm import backup.json        # With confirmation
+  pkm import -y backup.json     # Skip confirmation
+```
+
+**Behavior:**
+1. Read and validate JSON file
+2. Show warning about replacing current collection
+3. Prompt for confirmation (unless -y flag)
+4. Replace entire database with imported data
+5. Show import summary (cards, cache entries, timestamp)
 
 ## API Integration
 
 ### TCGdex SDK Usage
 
+The application uses the official Python SDK from TCGdex.
+
+**API Instance Management:**
+- Multiple language instances cached globally
+- Each language has its own SDK instance
+- Singleton pattern prevents duplicate API clients
+
+**Rarity Consistency:**
+For multi-language support, rarities are always fetched from the English API to maintain consistency:
+
 ```python
-from tcgdexsdk import TCGdex
-
-# Initialize with German language
-tcgdex = TCGdex("de")
-
-# Get card by set and number
-card = await tcgdex.fetch('sets/me01/136')
-
-# Get all sets
-sets = await tcgdex.fetch('sets')
-
-# Search cards (if needed later)
-from tcgdexsdk import Query
-cards = await tcgdex.card.list(Query().equal("name", "Pikachu"))
+# When fetching a German card
+card_data = await de_api.sdk.card.get(tcgdex_id)
+en_card_data = await en_api.sdk.card.get(tcgdex_id)  # Fetch rarity from English
+card_data.rarity = en_card_data.rarity  # Replace with English rarity
 ```
+
+This ensures rarities display consistently as "Common", "Rare", etc., regardless of the card's language.
 
 ### Caching Strategy
 
-1. **Card Metadata**: Cache indefinitely (cards don't change)
-2. **Set List**: Cache for 24 hours (new sets release occasionally)
-3. **Check cache first**: Always check local DB before API call
-4. **Lazy loading**: Only fetch when needed
+**Card Cache:**
+- Cache metadata when first added
+- Cache includes: name, rarity, types, HP, variants, image URL
+- No expiration (card data doesn't change)
+
+**Set Cache:**
+- Cache on first `sets` command
+- Could add expiration for new set releases (future enhancement)
+
+**Image URLs:**
+- Stored as high-quality PNG: `{base_url}/high.png`
+- Format ensures consistent image quality
+- URLs don't expire
 
 ### Error Handling
 
-- **API unreachable**: Use cached data if available, show warning
-- **Card not found**: Display helpful error with suggestion to use `poke sets`
-- **Invalid variant**: Show available variants for that card
-- **Invalid format**: Show usage example
+**API Errors:**
+- Card not found: "Card not found: me01-136. Try 'pkm sets me' to browse available cards."
+- Set not found: "Set not found: me99. Try 'pkm sets' to browse available sets."
+- Network errors: "Failed to fetch from API. Please check your internet connection."
+
+**User Input Errors:**
+- Invalid format: Show expected format with examples
+- Invalid language: Show list of supported languages
+- Invalid variant: Show available variants for that card
+
+**Database Errors:**
+- Permission issues: Suggest checking file permissions
+- Disk full: Provide clear error message
 
 ## Data Models
 
 ### Python Classes
 
-```python
-from dataclasses import dataclass
-from typing import Optional, List
-from datetime import datetime
+#### `OwnedCard`
+Represents a card variant in the collection.
 
+```python
+@dataclass
+class OwnedCard:
+    tcgdex_id: str          # e.g., "me01-136"
+    set_id: str             # e.g., "me01"
+    card_number: str        # e.g., "136"
+    variant: str            # normal, reverse, holo, firstEdition
+    language: str           # de, en, fr, etc.
+    quantity: int
+    added_at: datetime
+    updated_at: datetime
+```
+
+#### `CardInfo`
+Cached card metadata from API.
+
+```python
+@dataclass
+class CardInfo:
+    tcgdex_id: str
+    name: str
+    set_name: Optional[str]
+    rarity: Optional[str]   # Always in English
+    types: list[str]
+    hp: Optional[int]
+    available_variants: CardVariants
+    image_url: Optional[str]  # High quality PNG
+    cached_at: datetime
+```
+
+#### `CardVariants`
+Available variants for a card.
+
+```python
 @dataclass
 class CardVariants:
-    """Available variants for a card"""
     normal: bool = False
     reverse: bool = False
     holo: bool = False
     firstEdition: bool = False
+```
 
-@dataclass
-class OwnedCard:
-    """Card in user's collection"""
-    id: Optional[int]
-    set_id: str
-    card_number: str
-    tcgdex_id: str
-    variant: str  # 'normal', 'reverse', 'holo', 'firstEdition'
-    quantity: int
-    added_at: datetime
-    updated_at: datetime
+#### `SetInfo`
+Cached set information.
 
-@dataclass
-class CardInfo:
-    """Cached card metadata from API"""
-    tcgdex_id: str
-    name: str
-    set_name: Optional[str]
-    rarity: Optional[str]
-    types: List[str]
-    hp: Optional[int]
-    available_variants: CardVariants
-    image_url: Optional[str]
-    cached_at: datetime
-
+```python
 @dataclass
 class SetInfo:
-    """Cached set information"""
     set_id: str
     name: str
-    card_count: int
+    card_count: Optional[int]
     release_date: Optional[str]
     serie_id: Optional[str]
     serie_name: Optional[str]
     cached_at: datetime
 ```
 
+#### `Config`
+Application configuration.
+
+```python
+@dataclass
+class Config:
+    db_path: Path
+    backups_path: Path
+```
+
 ## Variant Handling
 
 ### Variant Types
 
-Based on TCGdex API:
-- `normal` - Standard non-foil card
-- `reverse` - Reverse holofoil
-- `holo` - Holofoil
-- `firstEdition` - First edition printing
+1. **normal** - Standard non-foil card
+2. **reverse** - Reverse holofoil
+3. **holo** - Holofoil
+4. **firstEdition** - First edition printing
 
 ### Variant Validation
 
 When adding a card:
-1. Fetch card from API
-2. Check `card.variants` object
-3. Validate requested variant is available
-4. If not available, show error with available variants
-
-Example:
-```
-Error: Variant 'holo' not available for Furret (me01-136)
-Available variants: normal, reverse
-```
+1. Fetch card data from API
+2. Check `variants` field in response
+3. If requested variant not available: show error with available variants
+4. Example error: "Variant 'holo' not available for Furret (swsh3-136). Available: normal, reverse"
 
 ### Multiple Variants
 
 Users can own multiple variants of the same card:
-- Each variant is a separate DB row
-- Tracked independently with separate quantities
-- Display shows all variants grouped by card
+- Each variant is a separate database row
+- Same tcgdex_id, different variant value
+- Each variant has its own quantity counter
 
-## Phase 1 Implementation Plan
+Example:
+```
+me01-136, normal, de, quantity=2
+me01-136, reverse, de, quantity=1
+me01-136, holo, de, quantity=1
+me01-136, normal, en, quantity=1
+```
 
-### Milestone 1: Core Infrastructure
-- [ ] Project setup with pyproject.toml
-- [ ] Database module with schema creation
-- [ ] API wrapper for TCGdex SDK
-- [ ] Data models
+## Implementation Status
 
-### Milestone 2: Basic Commands
-- [ ] `poke add` command
-- [ ] `poke list` command
-- [ ] `poke rm` command
-- [ ] Card caching
+### ✅ Completed Features
 
-### Milestone 3: Discovery Features
-- [ ] `poke sets` command with search
-- [ ] `poke info` command
-- [ ] Set caching
+- ✅ Core CLI commands (add, rm, list, sets, info, stats)
+- ✅ Multi-language support (11 languages)
+- ✅ Variant tracking and validation
+- ✅ Database caching for performance
+- ✅ Set discovery and search
+- ✅ Export/import functionality
+- ✅ Configurable database location
+- ✅ OS-specific config directories
+- ✅ One-line curl installation
+- ✅ Automatic updates
+- ✅ High-quality image URLs
+- ✅ English rarity consistency
+- ✅ Full test coverage (24 tests)
 
-### Milestone 4: Polish
-- [ ] `poke stats` command
-- [ ] Error handling and validation
-- [ ] Unit tests
-- [ ] Documentation (README)
+### 🔮 Future Enhancements
 
-## Future Enhancements (Not Phase 1)
-
-- Export to CSV/JSON
-- Import from file
-- Bulk operations (`poke add me01:136,137,138:normal`)
-- Card value tracking (pricing from API)
+- Card value tracking
 - Wishlist functionality
-- Web UI
-- Sync across devices
-- Trade tracking
-- Search within collection
-- Filters (by type, rarity, etc.)
-- Collection completion percentage per set
+- Collection completion tracking
+- Web interface
+- Barcode scanning
+- Price alerts
+- Trade management
+- Deck builder integration
 
-## Non-Goals (Explicitly Out of Scope)
+## Testing
 
-- Multi-user support
-- Cloud sync (Phase 1)
-- Card scanning/OCR
-- Trading platform integration
-- Price tracking (Phase 1)
-- Authentication/accounts
-- Mobile app
+### Test Coverage
 
-## Success Criteria
+**Unit Tests:**
+- `test_db.py` - Database operations (13 tests)
+- `test_config.py` - Configuration management (11 tests)
 
-Phase 1 is successful when a user can:
+**Test Approach:**
+- Temporary databases for isolation
+- Mock API responses where needed
+- Test error conditions
+- Validate data integrity
 
-1. ✓ Add a card using `pkm add me01:136:normal`
-2. ✓ See their collection with `pkm list`
-3. ✓ Remove cards with `pkm rm`
-4. ✓ Discover set IDs using `pkm sets MEG`
-5. ✓ View card details with `pkm info`
-6. ✓ Track multiple variants separately
-7. ✓ Accumulate quantities when adding duplicates
-8. ✓ View collection statistics
+**Running Tests:**
+```bash
+uv run pytest tests/ -v
+```
 
-## Technical Decisions
+## Performance Considerations
 
-### Why Python 3.13?
-- Latest stable version
-- Excellent standard library
-- Native async support for API calls
-- Good SQLite integration
-- Type hints for better code quality
+**Database:**
+- Indexed columns for fast queries (set_id, tcgdex_id, language)
+- Single-file SQLite for portability
+- Configurable location for cloud sync
 
-### Why SQLite?
-- Zero configuration
-- No server needed
-- Fast for local queries
-- Perfect for single-user desktop app
-- Built into Python
+**API Calls:**
+- Aggressive caching to minimize API requests
+- Card metadata cached indefinitely (doesn't change)
+- Batch operations where possible
 
-### Why Minimal Dependencies?
-- Faster installation
-- Fewer breaking changes
-- Easier maintenance
-- Standard library is powerful enough for MVP
-
-### Why argparse over Click/Typer?
-- Built-in to Python
-- Sufficient for simple CLI
-- Can migrate later if needed
-- Reduces dependency count
-
-### Why TCGdex API?
-- Official Pokemon TCG data
-- Multilingual support (German!)
-- Free and open source
-- Active maintenance
-- Comprehensive card data
-- Official Python SDK
+**CLI Speed:**
+- Lazy imports for faster startup
+- Minimal dependencies
+- Direct database queries (no ORM overhead)
 
 ## Security & Privacy
 
 - All data stored locally
-- No user accounts
-- No data sent to external services (except TCGdex API)
-- API calls use HTTPS
-- No sensitive data stored
+- No telemetry or tracking
+- No authentication required
+- Database permissions follow OS defaults
+- Optional cloud sync via user-configured paths
 
-## Performance Considerations
+## Upgrade Path
 
-- Cache aggressively to minimize API calls
-- Index database on frequently queried fields
-- Keep CLI response time < 200ms for cached operations
-- Batch API calls when possible
-- Use async for API operations
+**Updating Installation:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/cloonix/pkmdex/main/install.sh | bash
+```
 
-## Testing Strategy
+**Data Migration:**
+- Export before major updates: `pkm export`
+- Database schema migrations handled automatically
+- Config preserved across updates
 
-### Unit Tests
-- Database operations (CRUD)
-- API wrapper functions
-- Input parsing
-- Variant validation
-
-### Integration Tests
-- End-to-end CLI commands
-- Database + API interaction
-- Caching behavior
-
-### Manual Testing
-- Real German card additions
-- Set discovery workflow
-- Error scenarios
-
-## Documentation
-
-### README.md
-- Quick start guide
-- Installation instructions
-- Command reference
-- Example workflows
-- Troubleshooting
-
-### AGENTS.md
-- Instructions for AI coding agents (like Aider)
-- Architecture overview
-- Code style guidelines
-- Testing requirements
-- Common tasks
-
-## Open Questions & Decisions
-
-1. **Date format**: Use ISO 8601 or locale-specific?
-   - **Decision**: ISO 8601 for consistency
-
-2. **Card number padding**: Store "001" or "1"?
-   - **Decision**: Store as provided, compare numerically
-
-3. **Case sensitivity**: me01 vs ME01?
-   - **Decision**: Case-insensitive, normalize to lowercase
-
-4. **Sync indicator**: Show if using cached vs fresh data?
-   - **Decision**: Not in Phase 1, add later if needed
-
-5. **Confirmation prompts**: Ask before removing cards?
-   - **Decision**: No confirmation for single cards, direct removal
+**Breaking Changes:**
+- v0.3.0: Default database location changed from `~/.pkmdex/` to `~/.local/share/pkmdex/`
+  - Use `pkm setup --path ~/.pkmdex` to point to old location
+  - Or export/import to migrate data

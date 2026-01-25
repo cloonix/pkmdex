@@ -199,9 +199,9 @@ pkm add de:me01:136:reverse
 
 # 5. View your collection
 pkm list me01
-# Set    Card#  Name       Variants         Qty  Rarity
-# ─────────────────────────────────────────────────────
-# me01   136    Pottrott   normal, reverse  2/1  Selten
+# Set      Card#  Lang  Name                      Qty   Rarity          Variants
+# ──────────────────────────────────────────────────────────────────────────────
+# me01     136    de    Pottrott                  3     Uncommon        normal(2), reverse(1)
 ```
 
 ## Project Structure
