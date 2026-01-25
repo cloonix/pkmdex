@@ -20,6 +20,8 @@ class AnalysisFilter:
     category: Optional[str] = None
     language: Optional[str] = None
     set_id: Optional[str] = None
+    regulation: Optional[str] = None
+    artist: Optional[str] = None
 
 
 @dataclass
@@ -107,6 +109,11 @@ def analyze_collection(filter_criteria: AnalysisFilter) -> list[CardAnalysis]:
         if not card:
             continue
 
+        # Load raw JSON for additional filtering
+        raw_data = config.load_raw_card_data(tcgdex_id)
+        if not raw_data:
+            continue
+
         # Apply set_id filter
         if filter_criteria.set_id:
             set_id = tcgdex_id.split("-")[0]
@@ -141,6 +148,18 @@ def analyze_collection(filter_criteria: AnalysisFilter) -> list[CardAnalysis]:
         # Apply category filter
         if filter_criteria.category and card.category != filter_criteria.category:
             continue
+
+        # Apply regulation mark filter
+        if filter_criteria.regulation:
+            regulation_mark = raw_data.get("regulationMark")
+            if regulation_mark != filter_criteria.regulation:
+                continue
+
+        # Apply artist filter (case-insensitive partial match)
+        if filter_criteria.artist:
+            illustrator = raw_data.get("illustrator", "")
+            if filter_criteria.artist.lower() not in illustrator.lower():
+                continue
 
         results.append(card)
 

@@ -845,7 +845,7 @@ def handle_analyze(args: argparse.Namespace) -> int:
         args: Parsed command-line arguments
 
     Returns:
-        Exit code (0 for success)
+        Exit code (0 for success, 1 for error)
     """
     # Build filter criteria
     filter_criteria = analyzer.AnalysisFilter(
@@ -857,16 +857,78 @@ def handle_analyze(args: argparse.Namespace) -> int:
         category=args.category,
         language=args.language,
         set_id=args.set,
+        regulation=args.regulation,
+        artist=args.artist,
     )
 
     # Analyze collection
-    results = analyzer.analyze_collection(filter_criteria)
+    cards = analyzer.analyze_collection(filter_criteria)
 
-    if not results:
+    if not cards:
         print("No cards found matching the filter criteria.")
-        print("\n💡 Tip: Make sure you have raw JSON data for your cards.")
-        print("   Run 'pkm cache --update' to fetch English data for analysis.")
         return 0
+
+    # Show statistics or card list
+    if args.stats:
+        stats = analyzer.get_collection_statistics(cards)
+
+        print("Collection Analysis Statistics")
+        print("─" * 60)
+        print(f"Total unique cards:  {stats['total_cards']}")
+        print(f"Total quantity:      {stats['total_quantity']}")
+        print(
+            f"Average HP:          {stats['avg_hp']:.1f}" if stats["avg_hp"] > 0 else ""
+        )
+
+        if stats["by_stage"]:
+            print("\nBy Stage:")
+            for stage, count in sorted(stats["by_stage"].items()):
+                print(f"  {stage:<20} {count}")
+
+        if stats["by_type"]:
+            print("\nBy Type:")
+            for card_type, count in sorted(
+                stats["by_type"].items(), key=lambda x: x[1], reverse=True
+            ):
+                print(f"  {card_type:<20} {count}")
+
+        if stats["by_rarity"]:
+            print("\nBy Rarity:")
+            for rarity, count in sorted(
+                stats["by_rarity"].items(), key=lambda x: x[1], reverse=True
+            ):
+                print(f"  {rarity:<20} {count}")
+
+        if stats["by_category"]:
+            print("\nBy Category:")
+            for category, count in sorted(stats["by_category"].items()):
+                print(f"  {category:<20} {count}")
+
+        if stats["by_set"]:
+            print("\nBy Set:")
+            for set_id, count in sorted(
+                stats["by_set"].items(), key=lambda x: x[1], reverse=True
+            ):
+                print(f"  {set_id:<20} {count}")
+    else:
+        # Show card list
+        print(f"Found {len(cards)} card(s):")
+        print("─" * 80)
+
+        for card in cards:
+            types_str = ", ".join(card.types) if card.types else "N/A"
+            hp_str = f"{card.hp} HP" if card.hp else "N/A"
+            stage_str = card.stage if card.stage else "N/A"
+
+            print(f"{card.name:<30} [{card.language}]")
+            print(f"  {card.tcgdex_id:<20} {stage_str:<10} {types_str:<20} {hp_str}")
+            print(f"  {card.set_name}")
+            print(
+                f"  Rarity: {card.rarity or 'N/A':<15} Qty: {card.quantity}  Variants: {', '.join(card.variants)}"
+            )
+            print()
+
+    return 0
 
     # Show statistics
     if args.stats:
@@ -1076,6 +1138,14 @@ def create_parser() -> argparse.ArgumentParser:
         "--language", help="Filter by language code (e.g., de, en)"
     )
     analyze_parser.add_argument("--set", help="Filter by set ID (e.g., me01)")
+    analyze_parser.add_argument(
+        "--regulation",
+        help="Filter by regulation mark (e.g., A, B, C, D, E, F, G, H, I)",
+    )
+    analyze_parser.add_argument(
+        "--artist",
+        help="Filter by artist/illustrator name (partial match, case-insensitive)",
+    )
     analyze_parser.add_argument(
         "--stats", action="store_true", help="Show statistics instead of card list"
     )

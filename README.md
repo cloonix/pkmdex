@@ -274,42 +274,88 @@ jq '.stage' ~/.local/share/pkmdex/raw_data/cards/*.json | sort | uniq -c
 
 ## Collection Analysis
 
-The `analyze` command lets you filter and analyze your collection using the English raw JSON data. This provides powerful querying capabilities beyond basic listing.
+Analyze your collection with powerful filtering using English raw JSON data. This ensures consistent filtering regardless of your UI language.
 
-### Analysis Features
+### Available Filters
 
 ```bash
-# Show all cards with details
-pkm analyze
-
-# Filter by evolution stage (Basic, Stage1, Stage2, etc.)
+# Evolution stage
+pkm analyze --stage Basic
 pkm analyze --stage Stage1
+pkm analyze --stage Stage2
 
-# Filter by Pokemon type (Fire, Water, Grass, etc.)
+# Pokemon type
 pkm analyze --type Fire
-pkm analyze --type Psychic
+pkm analyze --type Water
 
-# Filter by rarity (Common, Uncommon, Rare, etc.)
+# Rarity
+pkm analyze --rarity Common
 pkm analyze --rarity Rare
+pkm analyze --rarity "Ultra Rare"
 
-# Filter by HP range
-pkm analyze --hp-min 100          # Cards with HP >= 100
-pkm analyze --hp-max 150          # Cards with HP <= 150
-pkm analyze --hp-min 100 --hp-max 150  # HP between 100-150
+# HP range
+pkm analyze --hp-min 100 --hp-max 150
 
-# Filter by category (Pokemon, Trainer, Energy)
+# Category (Pokemon, Trainer, Energy)
 pkm analyze --category Pokemon
+pkm analyze --category Trainer
 
-# Filter by language or set
-pkm analyze --language de         # Only German cards
-pkm analyze --set me01            # Only me01 set
+# Language
+pkm analyze --language de
+pkm analyze --language en
+
+# Set ID
+pkm analyze --set me01
+
+# Regulation mark (for tournament legality)
+pkm analyze --regulation F
+pkm analyze --regulation G
+
+# Artist/Illustrator (partial match, case-insensitive)
+pkm analyze --artist "Ken Sugimori"
+pkm analyze --artist HYOGO
 
 # Combine multiple filters
-pkm analyze --stage Stage1 --type Fire --hp-min 100
+pkm analyze --stage Stage1 --type Fire --hp-min 80
+pkm analyze --set me01 --rarity Rare --regulation I
+pkm analyze --artist "Mitsuhiro Arita" --type Psychic
+```
 
-# Show statistics instead of card list
+### Statistics Mode
+
+Add `--stats` to show collection statistics instead of a card list:
+
+```bash
+# Show overall statistics
 pkm analyze --stats
+
+# Statistics for filtered subset
 pkm analyze --type Fire --stats
+pkm analyze --set me01 --stats
+pkm analyze --regulation F --stats --language de
+```
+
+### Common Analysis Examples
+
+```bash
+# All Stage 1 Fire-type cards
+pkm analyze --stage Stage1 --type Fire
+
+# High-HP cards (150+)
+pkm analyze --hp-min 150
+
+# All cards from a specific artist
+pkm analyze --artist "Mitsuhiro Arita"
+
+# Tournament-legal cards (regulation F and newer)
+pkm analyze --regulation F
+pkm analyze --regulation G
+
+# Rare cards in German
+pkm analyze --rarity Rare --language de
+
+# Complete breakdown by type
+pkm analyze --type Grass --stats
 ```
 
 ### Analysis Output
