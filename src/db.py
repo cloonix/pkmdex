@@ -351,6 +351,39 @@ def get_owned_card_ids() -> list[tuple[str, str]]:
         return cursor.fetchall()
 
 
+def get_card_ownership(tcgdex_id: str, language: str) -> tuple[int, list[str]]:
+    """Get quantity and variants for a specific card+language combination.
+
+    This function is optimized for analyzer queries, avoiding the N+1 problem
+    by doing a targeted lookup instead of loading all cards.
+
+    Args:
+        tcgdex_id: Full TCGdex ID (e.g., "me01-001")
+        language: Language code (e.g., "de", "en", "fr")
+
+    Returns:
+        Tuple of (total_quantity, variant_list)
+        Returns (0, []) if card not owned in this language
+
+    Example:
+        >>> get_card_ownership("me01-001", "de")
+        (3, ["normal", "reverse"])  # 2 normal + 1 reverse = 3 total
+    """
+    with get_connection() as conn:
+        cursor = conn.execute(
+            "SELECT variant, quantity FROM cards WHERE tcgdex_id = ? AND language = ?",
+            (tcgdex_id, language),
+        )
+        rows = cursor.fetchall()
+
+    if not rows:
+        return (0, [])
+
+    variants = [row[0] for row in rows]
+    total_qty = sum(row[1] for row in rows)
+    return (total_qty, variants)
+
+
 # === Card Cache Operations ===
 
 

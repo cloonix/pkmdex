@@ -56,15 +56,8 @@ def load_card_with_ownership(tcgdex_id: str, language: str) -> Optional[CardAnal
     if not raw_data:
         return None
 
-    # Get ownership info from database
-    owned_cards = db.get_owned_cards()
-    card_variants = []
-    total_quantity = 0
-
-    for owned in owned_cards:
-        if owned.tcgdex_id == tcgdex_id and owned.language == language:
-            card_variants.append(owned.variant)
-            total_quantity += owned.quantity
+    # Get ownership info from database (optimized single query)
+    total_quantity, card_variants = db.get_card_ownership(tcgdex_id, language)
 
     if total_quantity == 0:
         return None
