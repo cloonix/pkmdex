@@ -457,6 +457,24 @@ async def handle_info(args: argparse.Namespace) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
+    # Show raw JSON if requested
+    if args.raw:
+        tcgdex_id = f"{set_id}-{card_number}"
+        raw_data = config.load_raw_card_data(tcgdex_id)
+
+        if raw_data:
+            import json
+
+            print(json.dumps(raw_data, indent=2, ensure_ascii=False))
+            return 0
+        else:
+            print(
+                f"No raw data found for {tcgdex_id}\n"
+                f"Fetch the card first with: pkm info {language}:{set_id}:{card_number}",
+                file=sys.stderr,
+            )
+            return 1
+
     try:
         # Fetch card info
         card_info = await fetch_and_cache_card(language, set_id, card_number)
@@ -496,6 +514,11 @@ async def handle_info(args: argparse.Namespace) -> int:
         # Show image URL
         if card_info.image_url:
             print(f"\nImage: {card_info.image_url}")
+
+        # Show hint about raw data
+        print(
+            f"\nTip: Use 'pkm info {language}:{set_id}:{card_number} --raw' to see complete API data"
+        )
 
         return 0
 
@@ -563,6 +586,7 @@ def handle_setup(args: argparse.Namespace) -> int:
         print("─" * 60)
         print(f"Database path:  {current_config.db_path}")
         print(f"Backups path:   {current_config.backups_path}")
+        print(f"Raw data path:  {current_config.raw_data_path}")
         print(f"Config file:    {config.get_config_file()}")
 
         # Check if using default
@@ -820,6 +844,11 @@ def create_parser() -> argparse.ArgumentParser:
     info_parser.add_argument(
         "card",
         help="Card in format: lang:set_id:card_number or set_id:card_number (uses German)",
+    )
+    info_parser.add_argument(
+        "--raw",
+        action="store_true",
+        help="Show complete raw JSON data from API",
     )
 
     # Stats command

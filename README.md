@@ -131,7 +131,7 @@ pkm <command> <lang>:<set_id>:<card_number>[:<variant>]
 | `rm` | Remove a card from collection | `pkm rm de:me01:136` or `pkm rm --all de:me01:136` |
 | `list` | Display collection | `pkm list` or `pkm list de` or `pkm list me01` |
 | `sets` | Search/list available sets | `pkm sets mega` |
-| `info` | Get card information | `pkm info de:me01:136` |
+| `info` | Get card information | `pkm info de:me01:136` or `pkm info de:me01:136 --raw` |
 | `stats` | Show collection statistics | `pkm stats` |
 | `cache` | Manage API cache | `pkm cache` or `pkm cache --refresh` |
 | `export` | Export collection to JSON | `pkm export` or `pkm export -o backup.json` |
@@ -197,6 +197,44 @@ pkm cache --clear --type all     # Clear all caches (default)
 - The cache is several weeks old (tool will show a tip if >7 days old)
 
 **Note:** The `sets` command automatically refreshes the set cache if it's older than 24 hours.
+
+## Raw JSON Data Storage
+
+The tool automatically saves complete API responses as JSON files for every card you fetch. This gives you access to the full, unprocessed data from TCGdex.
+
+### Viewing Raw Data
+
+```bash
+# Display formatted JSON from the API
+pkm info de:me01:136 --raw
+
+# Raw data is automatically saved when you:
+# - Add a card: pkm add de:me01:136
+# - Get card info: pkm info de:me01:136
+```
+
+### Where Raw Data is Stored
+
+Raw JSON files are saved in your data directory:
+- **Default location**: `~/.local/share/pkmdex/raw_data/cards/`
+- **Custom location**: `<your-custom-path>/raw_data/cards/`
+- **File naming**: `{tcgdex_id}.json` (e.g., `me01-136.json`)
+
+You can directly access these files for:
+- Building custom tools
+- Data analysis
+- Offline reference
+- Debugging API responses
+
+**Example:**
+```bash
+# View raw data file directly
+cat ~/.local/share/pkmdex/raw_data/cards/me01-136.json
+
+# Pretty-print with jq
+jq . ~/.local/share/pkmdex/raw_data/cards/me01-136.json
+```
+
 
 ## Finding Set IDs
 

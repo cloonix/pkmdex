@@ -31,13 +31,16 @@ def test_config_default():
     cfg = config.Config.default()
     assert cfg.db_path.name == "pokedex.db"
     assert cfg.backups_path.name == "backups"
+    assert cfg.raw_data_path.name == "raw_data"
     assert "pkmdex" in str(cfg.db_path)
 
 
 def test_config_to_from_dict():
     """Test config serialization."""
     original = config.Config(
-        db_path=Path("/tmp/test.db"), backups_path=Path("/tmp/backups")
+        db_path=Path("/tmp/test.db"),
+        backups_path=Path("/tmp/backups"),
+        raw_data_path=Path("/tmp/raw_data"),
     )
 
     # Convert to dict and back
@@ -46,6 +49,7 @@ def test_config_to_from_dict():
 
     assert restored.db_path == original.db_path
     assert restored.backups_path == original.backups_path
+    assert restored.raw_data_path == original.raw_data_path
 
 
 def test_save_and_load_config():
@@ -63,7 +67,9 @@ def test_save_and_load_config():
         try:
             # Create and save config
             test_config = config.Config(
-                db_path=Path("/tmp/test.db"), backups_path=Path("/tmp/backups")
+                db_path=Path("/tmp/test.db"),
+                backups_path=Path("/tmp/backups"),
+                raw_data_path=Path("/tmp/raw_data"),
             )
             config.save_config(test_config)
 
@@ -72,6 +78,7 @@ def test_save_and_load_config():
 
             assert loaded.db_path == test_config.db_path
             assert loaded.backups_path == test_config.backups_path
+            assert loaded.raw_data_path == test_config.raw_data_path
         finally:
             # Restore original function
             config.get_config_file = original_get_config_file
@@ -155,9 +162,13 @@ def test_setup_database_path_directory():
             # Check that backups subdirectory was created
             assert (test_dir / "backups").exists()
 
+            # Check that raw_data subdirectory was created
+            assert (test_dir / "raw_data").exists()
+
             # Check config values
             assert cfg.db_path == test_dir / "pokedex.db"
             assert cfg.backups_path == test_dir / "backups"
+            assert cfg.raw_data_path == test_dir / "raw_data"
 
             # Check that config was saved
             assert saved_config is not None
@@ -196,9 +207,13 @@ def test_setup_database_path_file():
             # Check config values
             assert cfg.db_path == test_file
             assert cfg.backups_path == test_file.parent / "backups"
+            assert cfg.raw_data_path == test_file.parent / "raw_data"
 
             # Check that backups directory was created
             assert (test_file.parent / "backups").exists()
+
+            # Check that raw_data directory was created
+            assert (test_file.parent / "raw_data").exists()
         finally:
             config.get_config_file = original_get_config_file
             config.save_config = original_save_config
@@ -237,7 +252,9 @@ def test_reset_config():
         try:
             # Set custom config first
             custom_cfg = config.Config(
-                db_path=Path("/tmp/custom.db"), backups_path=Path("/tmp/backups")
+                db_path=Path("/tmp/custom.db"),
+                backups_path=Path("/tmp/backups"),
+                raw_data_path=Path("/tmp/raw_data"),
             )
             config.save_config(custom_cfg)
 
@@ -247,6 +264,7 @@ def test_reset_config():
             # Should be default values
             assert default_cfg.db_path.name == "pokedex.db"
             assert default_cfg.backups_path.name == "backups"
+            assert default_cfg.raw_data_path.name == "raw_data"
 
             # Should have been saved
             assert saved_config is not None

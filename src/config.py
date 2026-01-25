@@ -16,6 +16,7 @@ class Config:
 
     db_path: Path
     backups_path: Path
+    raw_data_path: Path
 
     @classmethod
     def default(cls) -> "Config":
@@ -25,17 +26,34 @@ class Config:
         or %LOCALAPPDATA%/pkmdex on Windows.
         """
         data_dir = get_data_dir()
-        return cls(db_path=data_dir / "pokedex.db", backups_path=data_dir / "backups")
+        return cls(
+            db_path=data_dir / "pokedex.db",
+            backups_path=data_dir / "backups",
+            raw_data_path=data_dir / "raw_data",
+        )
 
     def to_dict(self) -> dict:
         """Convert config to dictionary for JSON serialization."""
-        return {"db_path": str(self.db_path), "backups_path": str(self.backups_path)}
+        return {
+            "db_path": str(self.db_path),
+            "backups_path": str(self.backups_path),
+            "raw_data_path": str(self.raw_data_path),
+        }
 
     @classmethod
     def from_dict(cls, data: dict) -> "Config":
         """Create config from dictionary."""
+        # Handle old config files without raw_data_path
+        raw_data_path = data.get("raw_data_path")
+        if not raw_data_path:
+            # Default to same directory as database
+            db_path = Path(data["db_path"])
+            raw_data_path = db_path.parent / "raw_data"
+
         return cls(
-            db_path=Path(data["db_path"]), backups_path=Path(data["backups_path"])
+            db_path=Path(data["db_path"]),
+            backups_path=Path(data["backups_path"]),
+            raw_data_path=Path(raw_data_path),
         )
 
 
@@ -149,8 +167,14 @@ def setup_database_path(db_path: str) -> Config:
     backups_dir = db_dir / "backups"
     backups_dir.mkdir(parents=True, exist_ok=True)
 
+    # Create raw_data subdirectory
+    raw_data_dir = db_dir / "raw_data"
+    raw_data_dir.mkdir(parents=True, exist_ok=True)
+
     # Create and save config
-    config = Config(db_path=db_file, backups_path=backups_dir)
+    config = Config(
+        db_path=db_file, backups_path=backups_dir, raw_data_path=raw_data_dir
+    )
     save_config(config)
 
     return config
@@ -163,5 +187,49 @@ def reset_config() -> Config:
         Default Config object.
     """
     config = Config.default()
+    config.raw_data_path.mkdir(parents=True, exist_ok=True)
     save_config(config)
     return config
+
+
+def save_raw_card_data(tcgdex_id: str, data: dict) -> Path:
+    """Save raw card data to JSON file.
+
+    Args:
+        tcgdex_id: Card ID (e.g., "swsh3-136")
+        data: Raw card data dictionary
+
+    Returns:
+        Path to saved JSON file
+    """
+    config = load_config()
+    config.raw_data_path.mkdir(parents=True, exist_ok=True)
+
+    # Save as cards/<tcgdex_id>.json
+    cards_dir = config.raw_data_path / "cards"
+    cards_dir.mkdir(parents=True, exist_ok=True)
+
+    file_path = cards_dir / f"{tcgdex_id}.json"
+    with open(file_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+
+    return file_path
+
+
+def load_raw_card_data(tcgdex_id: str) -> Optional[dict]:
+    """Load raw card data from JSON file.
+
+    Args:
+        tcgdex_id: Card ID (e.g., "swsh3-136")
+
+    Returns:
+        Raw card data dictionary, or None if not found
+    """
+    config = load_config()
+    file_path = config.raw_data_path / "cards" / f"{tcgdex_id}.json"
+
+    if not file_path.exists():
+        return None
+
+    with open(file_path, "r", encoding="utf-8") as f:
+        return json.load(f)

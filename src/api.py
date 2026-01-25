@@ -2,8 +2,10 @@
 
 from typing import Optional
 from tcgdexsdk import TCGdex
+from dataclasses import asdict, is_dataclass
 
 from .models import CardInfo, SetInfo
+from . import config
 
 
 class PokedexAPIError(Exception):
@@ -41,6 +43,26 @@ class TCGdexAPI:
             # Fetch card by full ID
             tcgdex_id = f"{set_id}-{card_number}"
             card_data = await self.sdk.card.get(tcgdex_id)
+
+            # Save raw data to JSON file
+            if is_dataclass(card_data):
+                try:
+                    raw_dict = asdict(card_data)
+
+                    # Remove non-serializable SDK reference
+                    def remove_sdk(obj):
+                        if isinstance(obj, dict):
+                            obj.pop("sdk", None)
+                            for v in obj.values():
+                                remove_sdk(v)
+                        elif isinstance(obj, list):
+                            for item in obj:
+                                remove_sdk(item)
+
+                    remove_sdk(raw_dict)
+                    config.save_raw_card_data(tcgdex_id, raw_dict)
+                except:
+                    pass  # If save fails, continue anyway
 
             # Fetch rarity from English API if not using English
             if self.language != "en":
