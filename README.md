@@ -181,10 +181,10 @@ The tool tracks different printing variants:
 
 ## Cache Management
 
-The tool automatically caches API data to improve performance and reduce API calls:
+The tool automatically caches data to improve performance and reduce API calls:
 
-- **Card cache**: Stores metadata for individual cards (name, rarity, types, etc.)
-- **Set cache**: Stores information about all available sets
+- **Language-specific JSON files**: Complete card data saved per language when you add cards
+- **Set cache**: Database table storing information about all available sets
 
 ### Cache Commands
 
@@ -195,49 +195,50 @@ pkm cache
 # Refresh set cache from API (updates all set information)
 pkm cache --refresh
 
-# Update cache for all owned cards (refetches card data and raw JSON)
+# Update JSON files for all owned cards (refetches and saves language-specific data)
 pkm cache --update
 
-# Clear specific cache
+# Clear set cache
 pkm cache --clear --type sets    # Clear only set cache
-pkm cache --clear --type cards   # Clear only card cache
-pkm cache --clear --type all     # Clear all caches (default)
 ```
 
 **When to use each option:**
 - `--refresh`: Updates the set cache with latest set information from TCGdex
-- `--update`: Refetches all cards in your collection to update card metadata and raw JSON files
-- `--clear`: Removes cached data (useful before doing a fresh update)
+- `--update`: Refetches all cards in your collection to update language-specific JSON files
+- `--clear`: Removes set cache (useful before doing a fresh update)
 
 **When to refresh/update cache:**
 - New Pokemon TCG sets have been released (`--refresh`)
 - Card information appears outdated (`--update`)
-- You want to update raw JSON files for owned cards (`--update`)
-- The cache is several weeks old (tool will show a tip if >7 days old)
+- You want to update JSON files for owned cards (`--update`)
+- The set cache is several weeks old (tool will show a tip if >7 days old)
 
 **Note:** The `sets` command automatically refreshes the set cache if it's older than 24 hours.
 
 ## Raw JSON Data Storage
 
-The tool automatically saves complete API responses as **English JSON files** for every card you fetch. This provides consistent data for analysis while the UI displays localized content.
+The tool automatically saves complete API responses as **JSON files** for every card you fetch - both in English (for analysis) and in the card's native language (for display).
 
-### Why English-Only?
+### Storage Strategy
 
-- **Consistent Analysis**: Filter by `stage="Stage1"` works for all cards regardless of UI language
-- **Standardized Fields**: All type names, rarities, and stages use English values
-- **Single Source of Truth**: One canonical format for all analysis queries
-- **Localized Display**: The UI still shows German/French/Japanese names via the cache
+When you add a card, the tool saves:
+1. **Language-specific JSON**: The card data in its native language (e.g., `me01-001.de.json` for German)
+2. **English JSON**: The same card in English for consistent analysis (e.g., `me01-001.json`)
+
+This dual storage provides:
+- **Localized Display**: Shows "Bisasam" for German cards, "Bulbizarre" for French
+- **Consistent Analysis**: Filter by `stage="Stage1"` works for all cards regardless of language
+- **Complete Data**: Names, types, descriptions all in the correct language
 
 ### Viewing Raw Data
 
 ```bash
-# Display formatted English JSON from the API
+# Display formatted JSON from the API (in card's language)
 pkm info de:me01:136 --raw
 
-# Even for German cards, raw JSON is in English:
-# - "name": "Bulbasaur" (not "Bisasam")
-# - "types": ["Grass"] (not "Pflanze")
-# - "stage": "Basic" (not "Basis")
+# For German cards, shows German data:
+# - "name": "Bisasam"
+# - But analysis still uses English JSON internally
 
 # Raw data is automatically saved when you:
 # - Add a card: pkm add de:me01:136
@@ -247,11 +248,12 @@ pkm info de:me01:136 --raw
 
 ### Where Raw Data is Stored
 
-Raw JSON files are saved in your data directory:
-- **Default location**: `~/.local/share/pkmdex/raw_data/cards/`
+JSON files are saved in your data directory:
+- **Default location**: `~/.pkmdex/raw_data/cards/`
 - **Custom location**: `<your-custom-path>/raw_data/cards/`
-- **File naming**: `{tcgdex_id}.json` (e.g., `me01-136.json`)
-- **Language**: Always English for consistent analysis
+- **File naming**: 
+  - `{tcgdex_id}.json` - English (e.g., `me01-136.json`)
+  - `{tcgdex_id}.{lang}.json` - Localized (e.g., `me01-136.de.json`)
 
 You can directly access these files for:
 - Building custom tools
@@ -262,14 +264,17 @@ You can directly access these files for:
 
 **Example:**
 ```bash
-# View raw data file directly
-cat ~/.local/share/pkmdex/raw_data/cards/me01-136.json
+# View English data file
+cat ~/.pkmdex/raw_data/cards/me01-136.json
+
+# View German data file
+cat ~/.pkmdex/raw_data/cards/me01-136.de.json
 
 # Pretty-print with jq
-jq . ~/.local/share/pkmdex/raw_data/cards/me01-136.json
+jq . ~/.pkmdex/raw_data/cards/me01-136.de.json
 
-# Query with jq
-jq '.stage' ~/.local/share/pkmdex/raw_data/cards/*.json | sort | uniq -c
+# Query all cards with jq
+jq '.stage' ~/.pkmdex/raw_data/cards/*.json | sort | uniq -c
 ```
 
 ## Collection Analysis
@@ -402,8 +407,8 @@ By Set:
 
 ### Important Notes
 
-- Analysis uses **English raw JSON data** for consistency
-- Run `pkm cache --update` to ensure you have English data for all cards
+- Analysis uses **English JSON data** automatically saved for consistency
+- Your collection displays **localized names** from language-specific JSON files
 - Filters are case-sensitive (use `Stage1`, not `stage1`)
 - Common stages: `Basic`, `Stage1`, `Stage2`, `VMAX`, `VSTAR`, etc.
 - Common types: `Fire`, `Water`, `Grass`, `Electric`, `Psychic`, `Fighting`, `Darkness`, `Metal`, `Fairy`, `Dragon`, `Colorless`
@@ -470,9 +475,10 @@ pkmdex/
 └── README.md       # This file
 
 Default Locations (configurable with 'pkm setup'):
-  Database:  ~/.local/share/pkmdex/pokedex.db
-  Backups:   ~/.local/share/pkmdex/backups/
-  Config:    ~/.config/pkmdex/config.json
+  Database:     ~/.pkmdex/pokedex.db
+  Backups:      ~/.pkmdex/backups/
+  Raw JSON:     ~/.pkmdex/raw_data/cards/
+  Config:       ~/.config/pkmdex/config.json
 ```
 
 ## Development
