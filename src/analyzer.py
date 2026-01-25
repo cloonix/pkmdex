@@ -31,7 +31,7 @@ class CardAnalysis:
     language: str
     set_name: str
     stage: Optional[str]
-    types: list[str]
+    types: Optional[list[str]]
     hp: Optional[int]
     rarity: Optional[str]
     category: str
@@ -118,7 +118,9 @@ def analyze_collection(filter_criteria: AnalysisFilter) -> list[CardAnalysis]:
             continue
 
         # Apply type filter
-        if filter_criteria.type and filter_criteria.type not in card.types:
+        if filter_criteria.type and (
+            not card.types or filter_criteria.type not in card.types
+        ):
             continue
 
         # Apply rarity filter
@@ -184,8 +186,9 @@ def get_collection_statistics(cards: list[CardAnalysis]) -> dict:
 
     # Count by type
     for card in cards:
-        for card_type in card.types:
-            stats["by_type"][card_type] = stats["by_type"].get(card_type, 0) + 1
+        if card.types:
+            for card_type in card.types:
+                stats["by_type"][card_type] = stats["by_type"].get(card_type, 0) + 1
 
     # Count by rarity
     for card in cards:
