@@ -680,6 +680,88 @@ def handle_import(args: argparse.Namespace) -> int:
         return 1
 
 
+async def handle_cache(args: argparse.Namespace) -> int:
+    """Handle 'cache' command.
+
+    Args:
+        args: Parsed command-line arguments
+
+    Returns:
+        Exit code (0 for success)
+    """
+    # Show cache statistics
+    if args.show or (not args.refresh and not args.clear):
+        stats = db.get_cache_stats()
+
+        print("Cache Statistics")
+        print("─" * 60)
+
+        # Card cache
+        print("\nCard Cache:")
+        print(f"  Entries: {stats['card_cache_count']}")
+        if stats["card_cache_oldest"]:
+            print(
+                f"  Oldest:  {stats['card_cache_oldest'].strftime('%Y-%m-%d %H:%M:%S')}"
+            )
+        if stats["card_cache_newest"]:
+            print(
+                f"  Newest:  {stats['card_cache_newest'].strftime('%Y-%m-%d %H:%M:%S')}"
+            )
+
+        # Set cache
+        print("\nSet Cache:")
+        print(f"  Entries: {stats['set_cache_count']}")
+        if stats["set_cache_oldest"]:
+            print(
+                f"  Oldest:  {stats['set_cache_oldest'].strftime('%Y-%m-%d %H:%M:%S')}"
+            )
+        if stats["set_cache_newest"]:
+            print(
+                f"  Newest:  {stats['set_cache_newest'].strftime('%Y-%m-%d %H:%M:%S')}"
+            )
+
+        # Show refresh hint
+        if stats["set_cache_count"] > 0 and stats["set_cache_oldest"]:
+            age = datetime.now() - stats["set_cache_oldest"]
+            if age > timedelta(days=7):
+                print(
+                    f"\n💡 Tip: Set cache is {age.days} days old. Run 'pkm cache --refresh' to update."
+                )
+
+        return 0
+
+    # Refresh caches
+    if args.refresh:
+        print("Refreshing cache from TCGdex API...")
+
+        # Refresh set cache
+        try:
+            api_client = api.get_api()
+            sets = await api_client.get_all_sets()
+            db.cache_sets(sets)
+            print(f"✓ Refreshed set cache: {len(sets)} sets")
+        except api.PokedexAPIError as e:
+            print(f"Error refreshing set cache: {e}", file=sys.stderr)
+            return 1
+
+        print("\n✓ Cache refresh complete")
+        return 0
+
+    # Clear caches
+    if args.clear:
+        if args.type in ("cards", "all"):
+            count = db.clear_card_cache()
+            print(f"✓ Cleared card cache: {count} entries")
+
+        if args.type in ("sets", "all"):
+            count = db.clear_set_cache()
+            print(f"✓ Cleared set cache: {count} entries")
+
+        return 0
+
+    return 0
+
+
 def create_parser() -> argparse.ArgumentParser:
     """Create argument parser.
 
@@ -689,7 +771,7 @@ def create_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="pkm",
         description="Manage your Pokemon TCG card collection (supports multiple languages)",
-        epilog="Examples: pkm add de:me01:136  or  pkm add de:me01:136:holo",
+        epilog="Examples: pkm add de:me01:136  or  pkm add de:me01:136:holo  or  pkm cache --refresh",
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
@@ -776,6 +858,24 @@ def create_parser() -> argparse.ArgumentParser:
         "-y", "--yes", action="store_true", help="Skip confirmation prompt"
     )
 
+    # Cache command
+    cache_parser = subparsers.add_parser("cache", help="Manage API cache")
+    cache_parser.add_argument(
+        "--show", action="store_true", help="Show cache statistics (default)"
+    )
+    cache_parser.add_argument(
+        "--refresh", action="store_true", help="Refresh cache from API"
+    )
+    cache_parser.add_argument(
+        "--clear", action="store_true", help="Clear cache entries"
+    )
+    cache_parser.add_argument(
+        "--type",
+        choices=["cards", "sets", "all"],
+        default="all",
+        help="Which cache to clear (default: all)",
+    )
+
     return parser
 
 
@@ -813,6 +913,8 @@ def main() -> None:
         exit_code = handle_export(args)
     elif args.command == "import":
         exit_code = handle_import(args)
+    elif args.command == "cache":
+        exit_code = asyncio.run(handle_cache(args))
     else:
         parser.print_help()
         exit_code = 1

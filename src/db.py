@@ -451,6 +451,67 @@ def get_set_cache_age() -> Optional[datetime]:
         return None
 
 
+def clear_card_cache() -> int:
+    """Clear all cached card metadata.
+
+    Returns:
+        Number of cache entries cleared
+    """
+    with get_connection() as conn:
+        cursor = conn.execute("DELETE FROM card_cache RETURNING *")
+        deleted_rows = cursor.fetchall()
+        conn.commit()
+        return len(deleted_rows)
+
+
+def clear_set_cache() -> int:
+    """Clear all cached set information.
+
+    Returns:
+        Number of cache entries cleared
+    """
+    with get_connection() as conn:
+        cursor = conn.execute("DELETE FROM set_cache RETURNING *")
+        deleted_rows = cursor.fetchall()
+        conn.commit()
+        return len(deleted_rows)
+
+
+def get_cache_stats() -> dict:
+    """Get cache statistics.
+
+    Returns:
+        Dict with cache counts and age information
+    """
+    with get_connection() as conn:
+        # Card cache stats
+        cursor = conn.execute(
+            "SELECT COUNT(*), MIN(cached_at), MAX(cached_at) FROM card_cache"
+        )
+        row = cursor.fetchone()
+        card_count = row[0] or 0
+        card_oldest = datetime.fromisoformat(row[1]) if row[1] else None
+        card_newest = datetime.fromisoformat(row[2]) if row[2] else None
+
+        # Set cache stats
+        cursor = conn.execute(
+            "SELECT COUNT(*), MIN(cached_at), MAX(cached_at) FROM set_cache"
+        )
+        row = cursor.fetchone()
+        set_count = row[0] or 0
+        set_oldest = datetime.fromisoformat(row[1]) if row[1] else None
+        set_newest = datetime.fromisoformat(row[2]) if row[2] else None
+
+        return {
+            "card_cache_count": card_count,
+            "card_cache_oldest": card_oldest,
+            "card_cache_newest": card_newest,
+            "set_cache_count": set_count,
+            "set_cache_oldest": set_oldest,
+            "set_cache_newest": set_newest,
+        }
+
+
 # === Collection Statistics ===
 
 

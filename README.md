@@ -95,6 +95,13 @@ pkm export                       # Exports to backups directory
 pkm export -o backup.json        # Custom export path
 pkm import backup.json           # Import collection
 
+# Manage cache
+pkm cache                        # Show cache statistics
+pkm cache --refresh              # Refresh set cache from API
+pkm cache --clear --type sets    # Clear set cache
+pkm cache --clear --type cards   # Clear card cache
+pkm cache --clear --type all     # Clear all caches
+
 # Remove a card
 pkm rm de:me01:136               # Removes normal variant
 pkm rm de:me01:136:holo          # Removes holo variant
@@ -126,6 +133,7 @@ pkm <command> <lang>:<set_id>:<card_number>[:<variant>]
 | `sets` | Search/list available sets | `pkm sets mega` |
 | `info` | Get card information | `pkm info de:me01:136` |
 | `stats` | Show collection statistics | `pkm stats` |
+| `cache` | Manage API cache | `pkm cache` or `pkm cache --refresh` |
 | `export` | Export collection to JSON | `pkm export` or `pkm export -o backup.json` |
 | `import` | Import collection from JSON | `pkm import backup.json` |
 
@@ -160,6 +168,35 @@ The tool tracks different printing variants:
 - `reverse` - Reverse holofoil
 - `holo` - Holofoil
 - `firstEdition` - First edition printing
+
+## Cache Management
+
+The tool automatically caches API data to improve performance and reduce API calls:
+
+- **Card cache**: Stores metadata for individual cards (name, rarity, types, etc.)
+- **Set cache**: Stores information about all available sets
+
+### Cache Commands
+
+```bash
+# View cache statistics
+pkm cache
+
+# Refresh set cache from API (updates all set information)
+pkm cache --refresh
+
+# Clear specific cache
+pkm cache --clear --type sets    # Clear only set cache
+pkm cache --clear --type cards   # Clear only card cache
+pkm cache --clear --type all     # Clear all caches (default)
+```
+
+**When to refresh cache:**
+- New Pokemon TCG sets have been released
+- Set information appears outdated
+- The cache is several weeks old (tool will show a tip if >7 days old)
+
+**Note:** The `sets` command automatically refreshes the set cache if it's older than 24 hours.
 
 ## Finding Set IDs
 
