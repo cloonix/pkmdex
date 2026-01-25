@@ -912,28 +912,23 @@ def handle_analyze(args: argparse.Namespace) -> int:
 
     # Show card list as table
     print(f"Collection Analysis ({len(results)} cards)")
-    print("─" * 120)
+    print("─" * 110)
     print(
-        f"{'ID':<12} {'Name (EN)':<30} {'Lang':<6} {'Stage':<10} {'Type':<12} {'HP':<4} {'Rarity':<10} {'Qty':<3}"
+        f"{'ID':<12} {'Name':<30} {'Lang':<6} {'Stage':<10} {'Type':<12} {'HP':<4} {'Rarity':<10} {'Qty':<3}"
     )
-    print("─" * 120)
+    print("─" * 110)
 
     for card in results:
         stage_str = card.stage or "—"
         type_str = ", ".join(card.types[:2]) if card.types else "—"
         hp_str = str(card.hp) if card.hp else "—"
         rarity_str = card.rarity or "—"
-        # Show localized name if different from English, otherwise just show language
-        if card.localized_name and card.localized_name != card.name:
-            name_display = f"{card.name[:24]} ({card.localized_name[:20]})"[:30]
-        else:
-            name_display = card.name[:30]
 
         print(
-            f"{card.tcgdex_id:<12} {name_display:<30} {card.language:<6} {stage_str:<10} {type_str:<12} {hp_str:<4} {rarity_str:<10} {card.quantity:<3}"
+            f"{card.tcgdex_id:<12} {card.name[:30]:<30} {card.language:<6} {stage_str:<10} {type_str:<12} {hp_str:<4} {rarity_str:<10} {card.quantity:<3}"
         )
 
-    print("─" * 120)
+    print("─" * 110)
     print(f"Total: {len(results)} cards")
 
     return 0
