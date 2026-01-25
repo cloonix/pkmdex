@@ -487,6 +487,7 @@ def cache_localized_name(tcgdex_id: str, language: str, name: str) -> None:
             """,
             (tcgdex_id, language, name, name),
         )
+        conn.commit()
 
 
 def get_localized_name(tcgdex_id: str, language: str) -> Optional[str]:
@@ -626,6 +627,15 @@ def get_cache_stats() -> dict:
         set_oldest = datetime.fromisoformat(row[1]) if row[1] else None
         set_newest = datetime.fromisoformat(row[2]) if row[2] else None
 
+        # Localized names cache stats
+        cursor = conn.execute(
+            "SELECT COUNT(*), MIN(cached_at), MAX(cached_at) FROM localized_names"
+        )
+        row = cursor.fetchone()
+        names_count = row[0] or 0
+        names_oldest = datetime.fromisoformat(row[1]) if row[1] else None
+        names_newest = datetime.fromisoformat(row[2]) if row[2] else None
+
     return {
         "card_cache_count": 0,  # Deprecated - kept for compatibility
         "card_cache_oldest": None,
@@ -633,6 +643,9 @@ def get_cache_stats() -> dict:
         "set_cache_count": set_count,
         "set_cache_oldest": set_oldest,
         "set_cache_newest": set_newest,
+        "localized_names_count": names_count,
+        "localized_names_oldest": names_oldest,
+        "localized_names_newest": names_newest,
     }
 
 

@@ -318,15 +318,20 @@ def handle_list(args: argparse.Namespace) -> int:
 
     # Print each card
     for (tcgdex_id, language), card_variants in sorted(cards_by_id_lang.items()):
-        # Get localized name from cache, fallback to English from raw JSON
-        name = db.get_localized_name(tcgdex_id, language)
-        if not name:
-            # Fallback to English name from raw JSON
-            raw_data = config.load_raw_card_data(tcgdex_id)
+        # Load raw data once (used for English names and rarity)
+        raw_data = config.load_raw_card_data(tcgdex_id)
+
+        # For English cards, always use raw JSON (it's the original)
+        # For other languages, try cache first, then fallback to English
+        if language == "en":
             name = raw_data.get("name", "Unknown") if raw_data else "Unknown"
+        else:
+            name = db.get_localized_name(tcgdex_id, language)
+            if not name:
+                # Fallback to English name from raw JSON
+                name = raw_data.get("name", "Unknown") if raw_data else "Unknown"
 
         # Get rarity from raw JSON (rarity is not language-specific)
-        raw_data = config.load_raw_card_data(tcgdex_id)
         rarity = raw_data.get("rarity", "") if raw_data else ""
 
         # Build variants string with quantities
@@ -722,11 +727,28 @@ async def handle_cache(args: argparse.Namespace) -> int:
         Exit code (0 for success)
     """
     # Show cache statistics
-    if args.show or (not args.refresh and not args.clear and not args.update):
+    if args.show or (
+        not args.refresh
+        and not args.clear
+        and not args.update
+        and not args.update_names
+    ):
         stats = db.get_cache_stats()
 
         print("Cache Statistics")
         print("─" * 60)
+
+        # Localized names cache
+        print("\nLocalized Names Cache:")
+        print(f"  Entries: {stats['localized_names_count']}")
+        if stats["localized_names_oldest"]:
+            print(
+                f"  Oldest:  {stats['localized_names_oldest'].strftime('%Y-%m-%d %H:%M:%S')}"
+            )
+        if stats["localized_names_newest"]:
+            print(
+                f"  Newest:  {stats['localized_names_newest'].strftime('%Y-%m-%d %H:%M:%S')}"
+            )
 
         # Set cache
         print("\nSet Cache:")
@@ -789,6 +811,47 @@ async def handle_cache(args: argparse.Namespace) -> int:
         )
         return 0
 
+    # Update localized names for owned cards
+    if args.update_names:
+        print("Updating localized names for all owned cards...")
+
+        # Get all unique card IDs from owned cards
+        card_ids = db.get_owned_card_ids()
+
+        if not card_ids:
+            print("No owned cards found in collection.")
+            return 0
+
+        print(f"Found {len(card_ids)} unique cards to update")
+
+        updated_count = 0
+        error_count = 0
+
+        # Update each card's localized name
+        for tcgdex_id, language in card_ids:
+            try:
+                # Parse the tcgdex_id to get set_id and card_number
+                set_id, card_number = db.parse_tcgdex_id(tcgdex_id)
+
+                # Fetch card from API with the correct language
+                api_client = api.get_api(language)
+                card_info = await api_client.get_card(set_id, card_number)
+
+                # Cache the localized name
+                db.cache_localized_name(tcgdex_id, language, card_info.name)
+
+                updated_count += 1
+                print(f"  ✓ Updated: {tcgdex_id} ({language}) - {card_info.name}")
+
+            except Exception as e:
+                error_count += 1
+                print(f"  ✗ Failed: {tcgdex_id} ({language}) - {e}", file=sys.stderr)
+
+        print(
+            f"\n✓ Localized names update complete: {updated_count} updated, {error_count} errors"
+        )
+        return 0
+
     # Refresh caches
     if args.refresh:
         print("Refreshing cache from TCGdex API...")
@@ -810,6 +873,9 @@ async def handle_cache(args: argparse.Namespace) -> int:
     if args.clear:
         if args.type in ("cards", "all"):
             print("ℹ Card cache no longer exists (using raw JSON files)")
+            # Clear localized names cache
+            count = db.clear_localized_names()
+            print(f"✓ Cleared localized names cache: {count} entries")
 
         if args.type in ("sets", "all"):
             count = db.clear_set_cache()
@@ -1027,6 +1093,11 @@ def create_parser() -> argparse.ArgumentParser:
     )
     cache_parser.add_argument(
         "--update", action="store_true", help="Update cache for all owned cards"
+    )
+    cache_parser.add_argument(
+        "--update-names",
+        action="store_true",
+        help="Update localized names for all owned cards",
     )
     cache_parser.add_argument(
         "--clear", action="store_true", help="Clear cache entries"
