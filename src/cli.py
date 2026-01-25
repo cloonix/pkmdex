@@ -260,7 +260,7 @@ def handle_list(args: argparse.Namespace) -> int:
 
     # Print header
     print(
-        f"{'Set':<8} {'Card#':<6} {'Lang':<5} {'Name':<23} {'Variants':<18} {'Qty':<8} {'Rarity':<12}"
+        f"{'Set':<8} {'Card#':<6} {'Lang':<5} {'Name':<25} {'Qty':<5} {'Rarity':<15} {'Variants'}"
     )
     print("─" * 90)
 
@@ -285,14 +285,14 @@ def handle_list(args: argparse.Namespace) -> int:
         variants_display = ", ".join(variant_strs)
 
         # Truncate name if too long
-        if len(name) > 22:
-            name = name[:19] + "..."
+        if len(name) > 24:
+            name = name[:21] + "..."
 
         # Get language from first variant
         lang = card_variants[0].language
 
         print(
-            f"{card_variants[0].set_id:<8} {card_variants[0].card_number:<6} {lang:<5} {name:<23} {variants_display:<18} {card_total_qty:<8} {rarity:<12}"
+            f"{card_variants[0].set_id:<8} {card_variants[0].card_number:<6} {lang:<5} {name:<25} {card_total_qty:<5} {rarity:<15} {variants_display}"
         )
         total_unique += 1
 
