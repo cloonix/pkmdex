@@ -19,16 +19,20 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+MANIFEST
 
 # Virtual environments
 venv/
+.venv/
 ENV/
 env/
 
-# Database
+# Database files
 *.db
 *.db-journal
-.pokedex/
+*.db-shm
+*.db-wal
+.pkmdex/
 
 # IDE
 .vscode/
@@ -36,17 +40,39 @@ env/
 *.swp
 *.swo
 *~
+.project
+.pydevproject
 
 # Testing
 .pytest_cache/
 .coverage
+.coverage.*
 htmlcov/
 .tox/
+nosetests.xml
+coverage.xml
+*.cover
 
 # Type checking
 .mypy_cache/
 .pytype/
+.pyre/
+.dmypy.json
+dmypy.json
+
+# Linting
+.ruff_cache/
+.pylint.d/
 
 # OS
 .DS_Store
 Thumbs.db
+._*
+
+# uv
+.python-version
+
+# Temporary files
+*.tmp
+*.bak
+*.log
