@@ -41,6 +41,26 @@ class TCGdexAPI:
             # Fetch card by full ID
             tcgdex_id = f"{set_id}-{card_number}"
             card_data = await self.sdk.card.get(tcgdex_id)
+
+            # Fetch rarity from English API if not using English
+            if self.language != "en":
+                try:
+                    en_api = get_api("en")
+                    en_card_data = await en_api.sdk.card.get(tcgdex_id)
+                    # Replace rarity with English version
+                    if isinstance(card_data, dict):
+                        card_data["rarity"] = (
+                            getattr(en_card_data, "rarity", None)
+                            if hasattr(en_card_data, "rarity")
+                            else en_card_data.get("rarity")
+                        )
+                    else:
+                        # Card data is a dataclass
+                        card_data.rarity = getattr(en_card_data, "rarity", None)
+                except:
+                    # If English fetch fails, use translated rarity
+                    pass
+
             return CardInfo.from_api_response(card_data)
         except Exception as e:
             raise PokedexAPIError(
@@ -61,6 +81,26 @@ class TCGdexAPI:
         """
         try:
             card_data = await self.sdk.card.get(tcgdex_id)
+
+            # Fetch rarity from English API if not using English
+            if self.language != "en":
+                try:
+                    en_api = get_api("en")
+                    en_card_data = await en_api.sdk.card.get(tcgdex_id)
+                    # Replace rarity with English version
+                    if isinstance(card_data, dict):
+                        card_data["rarity"] = (
+                            getattr(en_card_data, "rarity", None)
+                            if hasattr(en_card_data, "rarity")
+                            else en_card_data.get("rarity")
+                        )
+                    else:
+                        # Card data is a dataclass
+                        card_data.rarity = getattr(en_card_data, "rarity", None)
+                except:
+                    # If English fetch fails, use translated rarity
+                    pass
+
             return CardInfo.from_api_response(card_data)
         except Exception as e:
             raise PokedexAPIError(
