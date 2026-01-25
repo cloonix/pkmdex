@@ -10,8 +10,31 @@ from typing import Optional, Generator
 from .models import OwnedCard, CardInfo, SetInfo, CardVariants
 
 
-# Database file location
-DB_PATH = Path.home() / ".pkmdex" / "pkmdex.db"
+# Database file location - can be overridden for testing
+_DEFAULT_DB_PATH = None
+DB_PATH = None
+
+
+def get_db_path() -> Path:
+    """Get the configured database path.
+
+    Returns:
+        Path to database file from config or default.
+    """
+    global DB_PATH, _DEFAULT_DB_PATH
+
+    # If DB_PATH has been manually set (e.g., by tests), use it
+    if DB_PATH is not None and DB_PATH != _DEFAULT_DB_PATH:
+        return DB_PATH
+
+    # Import here to avoid circular dependency
+    from . import config
+
+    cfg = config.load_config()
+    _DEFAULT_DB_PATH = cfg.db_path
+    DB_PATH = cfg.db_path
+    return cfg.db_path
+
 
 # Schema definition
 CREATE_SCHEMA = """
@@ -115,7 +138,7 @@ def init_database(db_path: Optional[Path] = None) -> None:
     Args:
         db_path: Optional custom database path (defaults to DB_PATH)
     """
-    path = db_path or DB_PATH
+    path = db_path or get_db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
 
     with get_connection(path) as conn:
@@ -141,12 +164,12 @@ def get_connection(
     """Get database connection context manager.
 
     Args:
-        db_path: Optional custom database path (defaults to DB_PATH)
+        db_path: Optional custom database path (defaults to configured path)
 
     Yields:
         SQLite connection
     """
-    path = db_path or DB_PATH
+    path = db_path or get_db_path()
     conn = sqlite3.connect(str(path))
     try:
         yield conn

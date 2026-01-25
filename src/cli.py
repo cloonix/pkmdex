@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
-from . import db, api
+from . import db, api, config
 from .models import CardInfo
 
 
@@ -538,6 +538,66 @@ def handle_stats(args: argparse.Namespace) -> int:
     return 0
 
 
+def handle_setup(args: argparse.Namespace) -> int:
+    """Handle 'setup' command.
+
+    Args:
+        args: Parsed command-line arguments
+
+    Returns:
+        Exit code (0 for success, 1 for error)
+    """
+    # Show current configuration
+    if args.show:
+        current_config = config.load_config()
+        print("Current Configuration")
+        print("─" * 60)
+        print(f"Database path:  {current_config.db_path}")
+        print(f"Backups path:   {current_config.backups_path}")
+        print(f"Config file:    {config.get_config_file()}")
+
+        # Check if using default
+        default_config = config.Config.default()
+        if current_config.db_path == default_config.db_path:
+            print("\n(Using default configuration)")
+
+        return 0
+
+    # Reset to defaults
+    if args.reset:
+        default_config = config.reset_config()
+        print("✓ Configuration reset to defaults")
+        print(f"  Database path:  {default_config.db_path}")
+        print(f"  Backups path:   {default_config.backups_path}")
+        return 0
+
+    # Set custom database path
+    if args.path:
+        try:
+            new_config = config.setup_database_path(args.path)
+            print("✓ Configuration updated")
+            print(f"  Database path:  {new_config.db_path}")
+            print(f"  Backups path:   {new_config.backups_path}")
+            print(f"\nNote: Restart any running instances to use the new path.")
+            return 0
+        except ValueError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+
+    # No arguments - show help
+    print("Usage: pkm setup [--show | --reset | --path PATH]")
+    print("\nOptions:")
+    print("  --show         Show current configuration")
+    print("  --reset        Reset to default configuration")
+    print("  --path PATH    Set custom database directory or file path")
+    print("\nExamples:")
+    print("  pkm setup --show")
+    print("  pkm setup --path ~/Documents/pokemon")
+    print("  pkm setup --path /mnt/backup/pokemon/cards.db")
+    print("  pkm setup --reset")
+    return 0
+
+
 def handle_export(args: argparse.Namespace) -> int:
     """Handle 'export' command.
 
@@ -551,8 +611,11 @@ def handle_export(args: argparse.Namespace) -> int:
     if args.output:
         output_path = Path(args.output)
     else:
+        # Use backups directory from config
+        cfg = config.load_config()
+        cfg.backups_path.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_path = Path(f"pkmdex_export_{timestamp}.json")
+        output_path = cfg.backups_path / f"pkmdex_export_{timestamp}.json"
 
     try:
         result = db.export_to_json(output_path)
@@ -665,6 +728,20 @@ def create_parser() -> argparse.ArgumentParser:
     # Stats command
     stats_parser = subparsers.add_parser("stats", help="Show collection statistics")
 
+    # Setup command
+    setup_parser = subparsers.add_parser(
+        "setup", help="Configure database path and settings"
+    )
+    setup_parser.add_argument(
+        "--show", action="store_true", help="Show current configuration"
+    )
+    setup_parser.add_argument(
+        "--reset", action="store_true", help="Reset to default configuration"
+    )
+    setup_parser.add_argument(
+        "--path", help="Set custom database directory or file path"
+    )
+
     # Export command
     export_parser = subparsers.add_parser(
         "export", help="Export collection to JSON file"
@@ -715,6 +792,8 @@ def main() -> None:
         exit_code = asyncio.run(handle_info(args))
     elif args.command == "stats":
         exit_code = handle_stats(args)
+    elif args.command == "setup":
+        exit_code = handle_setup(args)
     elif args.command == "export":
         exit_code = handle_export(args)
     elif args.command == "import":
