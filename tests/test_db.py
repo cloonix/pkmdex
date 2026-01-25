@@ -117,27 +117,6 @@ def test_get_owned_cards_filter(temp_db):
     assert len(en_cards) == 1
 
 
-def test_cache_and_get_card(temp_db):
-    """Test caching and retrieving card info from cache."""
-    # card_cache has been removed - functions are now stubs
-    card_info = CardInfo(
-        tcgdex_id="me01-136",
-        name="Furret",
-        set_name="Mega Evolution",
-        rarity="Uncommon",
-        types=["Colorless"],
-        hp=110,
-        available_variants=CardVariants(normal=True, reverse=True),
-        image_url="https://example.com/image.png",
-        cached_at=datetime.now(),
-    )
-
-    db.cache_card(card_info)  # No-op now
-
-    cached = db.get_cached_card("me01-136")
-    assert cached is None  # Always returns None now
-
-
 def test_cache_sets(temp_db):
     """Test caching and retrieving sets."""
     sets = [
@@ -235,21 +214,6 @@ def test_export_import_json(temp_db):
     db.add_card_variant("me01-136", "normal", "de", 2)
     db.add_card_variant("me01-136", "reverse", "de", 1)
     db.add_card_variant("swsh3-045", "holo", "en", 3)
-
-    # Cache some card info
-    db.cache_card(
-        CardInfo(
-            tcgdex_id="me01-136",
-            name="Furret",
-            set_name="Mega-Entwicklung",
-            rarity="Uncommon",
-            types=["Colorless"],
-            hp=110,
-            available_variants=CardVariants(normal=True, reverse=True),
-            image_url="https://example.com/image.png",
-            cached_at=datetime.now(),
-        )
-    )
 
     # Cache a set
     db.cache_sets(

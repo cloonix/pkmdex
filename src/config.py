@@ -192,12 +192,13 @@ def reset_config() -> Config:
     return config
 
 
-def save_raw_card_data(tcgdex_id: str, data: dict) -> Path:
-    """Save raw card data to JSON file (always in English).
+def save_raw_card_data(tcgdex_id: str, data: dict, language: str = "en") -> Path:
+    """Save raw card data to JSON file.
 
     Args:
         tcgdex_id: Card ID (e.g., "swsh3-136")
-        data: Raw card data dictionary (should be English)
+        data: Raw card data dictionary
+        language: Language code (e.g., "en", "de", "fr")
 
     Returns:
         Path to saved JSON file
@@ -205,31 +206,51 @@ def save_raw_card_data(tcgdex_id: str, data: dict) -> Path:
     config = load_config()
     config.raw_data_path.mkdir(parents=True, exist_ok=True)
 
-    # Save as cards/<tcgdex_id>.json
+    # Save as cards/<tcgdex_id>.json (English) or cards/<tcgdex_id>.<lang>.json
     cards_dir = config.raw_data_path / "cards"
     cards_dir.mkdir(parents=True, exist_ok=True)
 
-    file_path = cards_dir / f"{tcgdex_id}.json"
+    if language == "en":
+        filename = f"{tcgdex_id}.json"
+    else:
+        filename = f"{tcgdex_id}.{language}.json"
+
+    file_path = cards_dir / filename
     with open(file_path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
     return file_path
 
 
-def load_raw_card_data(tcgdex_id: str) -> Optional[dict]:
-    """Load raw card data from JSON file (English).
+def load_raw_card_data(tcgdex_id: str, language: str = "en") -> Optional[dict]:
+    """Load raw card data from JSON file.
 
     Args:
         tcgdex_id: Card ID (e.g., "swsh3-136")
+        language: Language code (e.g., "en", "de", "fr")
 
     Returns:
         Raw card data dictionary, or None if not found
+        Falls back to English if language-specific file doesn't exist
     """
     config = load_config()
-    file_path = config.raw_data_path / "cards" / f"{tcgdex_id}.json"
+    cards_dir = config.raw_data_path / "cards"
 
-    if not file_path.exists():
-        return None
+    # Try language-specific file first
+    if language == "en":
+        file_path = cards_dir / f"{tcgdex_id}.json"
+    else:
+        file_path = cards_dir / f"{tcgdex_id}.{language}.json"
 
-    with open(file_path, "r", encoding="utf-8") as f:
-        return json.load(f)
+    if file_path.exists():
+        with open(file_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+
+    # Fallback to English if not found
+    if language != "en":
+        fallback_path = cards_dir / f"{tcgdex_id}.json"
+        if fallback_path.exists():
+            with open(fallback_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+
+    return None

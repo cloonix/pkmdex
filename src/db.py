@@ -59,15 +59,6 @@ CREATE INDEX IF NOT EXISTS idx_language ON cards(language);
 -- Composite index for analyzer lookups
 CREATE INDEX IF NOT EXISTS idx_cards_lookup ON cards(tcgdex_id, language);
 
--- Localized card names cache (language-aware)
-CREATE TABLE IF NOT EXISTS localized_names (
-    tcgdex_id TEXT NOT NULL,
-    language TEXT NOT NULL,
-    name TEXT NOT NULL,
-    cached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (tcgdex_id, language)
-);
-
 -- Set information cache
 CREATE TABLE IF NOT EXISTS set_cache (
     set_id TEXT PRIMARY KEY,
@@ -161,8 +152,8 @@ def _migrate_add_composite_index(conn: sqlite3.Connection) -> None:
         print("✓ Migrated: Added composite index for faster analyzer queries")
 
 
-def _migrate_add_localized_names_table(conn: sqlite3.Connection) -> None:
-    """Add localized_names table for language-aware name caching.
+def _migrate_drop_localized_names_table(conn: sqlite3.Connection) -> None:
+    """Drop localized_names table - replaced by language-specific raw JSON files.
 
     Args:
         conn: Database connection
@@ -171,17 +162,11 @@ def _migrate_add_localized_names_table(conn: sqlite3.Connection) -> None:
     cursor = conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='localized_names'"
     )
-    if not cursor.fetchone():
-        conn.execute("""
-            CREATE TABLE localized_names (
-                tcgdex_id TEXT NOT NULL,
-                language TEXT NOT NULL,
-                name TEXT NOT NULL,
-                cached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (tcgdex_id, language)
-            )
-        """)
-        print("✓ Migrated: Added localized_names table for language-aware caching")
+    if cursor.fetchone():
+        conn.execute("DROP TABLE localized_names")
+        print(
+            "✓ Migrated: Removed localized_names table (using language-specific JSON instead)"
+        )
 
 
 def init_database(db_path: Optional[Path] = None) -> None:
@@ -201,7 +186,7 @@ def init_database(db_path: Optional[Path] = None) -> None:
             _migrate_add_language_column(conn)
             _migrate_drop_card_cache(conn)
             _migrate_add_composite_index(conn)
-            _migrate_add_localized_names_table(conn)
+            _migrate_drop_localized_names_table(conn)
         else:
             # New database - create schema
             conn.executescript(CREATE_SCHEMA)
@@ -436,90 +421,6 @@ def get_card_ownership(tcgdex_id: str, language: str) -> tuple[int, list[str]]:
     return (total_qty, variants)
 
 
-# === Card Cache Operations (DEPRECATED - Use raw JSON files instead) ===
-
-
-def cache_card(card_info: CardInfo) -> None:
-    """DEPRECATED: Card caching removed. Use raw JSON files instead.
-
-    This function is kept as a no-op stub for backward compatibility.
-    Raw JSON files are saved automatically by the API layer.
-
-    Args:
-        card_info: CardInfo instance (ignored)
-    """
-    pass  # No-op - raw JSON is saved by api.py
-
-
-def get_cached_card(tcgdex_id: str) -> Optional[CardInfo]:
-    """DEPRECATED: Card cache removed. Use config.load_raw_card_data() instead.
-
-    This function is kept as a stub that returns None for backward compatibility.
-    Callers should use config.load_raw_card_data(tcgdex_id) to get card data.
-
-    Args:
-        tcgdex_id: Full TCGdex ID
-
-    Returns:
-        None (cache no longer exists)
-    """
-    return None  # Cache table removed
-
-
-# === Localized Names Cache Operations ===
-
-
-def cache_localized_name(tcgdex_id: str, language: str, name: str) -> None:
-    """Cache a card's localized name.
-
-    Args:
-        tcgdex_id: Full TCGdex ID (e.g., 'me01-136')
-        language: Language code (e.g., 'de', 'en', 'fr')
-        name: Localized card name
-    """
-    with get_connection() as conn:
-        conn.execute(
-            """
-            INSERT INTO localized_names (tcgdex_id, language, name)
-            VALUES (?, ?, ?)
-            ON CONFLICT(tcgdex_id, language) 
-            DO UPDATE SET name = ?, cached_at = CURRENT_TIMESTAMP
-            """,
-            (tcgdex_id, language, name, name),
-        )
-        conn.commit()
-
-
-def get_localized_name(tcgdex_id: str, language: str) -> Optional[str]:
-    """Get a card's localized name from cache.
-
-    Args:
-        tcgdex_id: Full TCGdex ID (e.g., 'me01-136')
-        language: Language code (e.g., 'de', 'en', 'fr')
-
-    Returns:
-        Localized name if cached, None otherwise
-    """
-    with get_connection() as conn:
-        cursor = conn.execute(
-            "SELECT name FROM localized_names WHERE tcgdex_id = ? AND language = ?",
-            (tcgdex_id, language),
-        )
-        row = cursor.fetchone()
-        return row[0] if row else None
-
-
-def clear_localized_names() -> int:
-    """Clear all localized name cache.
-
-    Returns:
-        Number of entries removed
-    """
-    with get_connection() as conn:
-        cursor = conn.execute("DELETE FROM localized_names")
-        return cursor.rowcount
-
-
 # === Set Cache Operations ===
 
 
@@ -586,18 +487,6 @@ def get_set_cache_age() -> Optional[datetime]:
         return None
 
 
-def clear_card_cache() -> int:
-    """DEPRECATED: Card cache removed.
-
-    This function is kept as a stub for backward compatibility.
-    Returns 0 since there is no cache to clear.
-
-    Returns:
-        0 (cache no longer exists)
-    """
-    return 0  # Cache table removed
-
-
 def clear_set_cache() -> int:
     """Clear all cached set information.
 
@@ -627,25 +516,10 @@ def get_cache_stats() -> dict:
         set_oldest = datetime.fromisoformat(row[1]) if row[1] else None
         set_newest = datetime.fromisoformat(row[2]) if row[2] else None
 
-        # Localized names cache stats
-        cursor = conn.execute(
-            "SELECT COUNT(*), MIN(cached_at), MAX(cached_at) FROM localized_names"
-        )
-        row = cursor.fetchone()
-        names_count = row[0] or 0
-        names_oldest = datetime.fromisoformat(row[1]) if row[1] else None
-        names_newest = datetime.fromisoformat(row[2]) if row[2] else None
-
     return {
-        "card_cache_count": 0,  # Deprecated - kept for compatibility
-        "card_cache_oldest": None,
-        "card_cache_newest": None,
         "set_cache_count": set_count,
         "set_cache_oldest": set_oldest,
         "set_cache_newest": set_newest,
-        "localized_names_count": names_count,
-        "localized_names_oldest": names_oldest,
-        "localized_names_newest": names_newest,
     }
 
 
@@ -825,27 +699,7 @@ def import_from_json(input_path: Path) -> dict:
             )
 
         # Skip card_cache import - it's deprecated (kept for compatibility with old exports)
-
-        # Import card cache
-        for card in import_data.get("card_cache", []):
-            conn.execute(
-                """
-                INSERT INTO card_cache
-                (tcgdex_id, name, set_name, rarity, types, hp, available_variants, image_url, cached_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    card["tcgdex_id"],
-                    card["name"],
-                    card["set_name"],
-                    card["rarity"],
-                    card["types"],
-                    card["hp"],
-                    card["available_variants"],
-                    card["image_url"],
-                    card["cached_at"],
-                ),
-            )
+        # (card_cache has been removed)
 
         # Import set cache
         for set_info in import_data.get("set_cache", []):
