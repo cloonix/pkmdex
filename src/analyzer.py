@@ -182,9 +182,10 @@ def get_collection_statistics(cards: list[CardAnalysis]) -> dict:
             "avg_hp": 0,
         }
 
+    # Initialize stats
     stats = {
         "total_cards": len(cards),
-        "total_quantity": sum(c.quantity for c in cards),
+        "total_quantity": 0,
         "by_stage": {},
         "by_type": {},
         "by_rarity": {},
@@ -193,35 +194,40 @@ def get_collection_statistics(cards: list[CardAnalysis]) -> dict:
         "avg_hp": 0,
     }
 
-    # Count by stage
+    hp_values = []
+
+    # Single loop to collect all statistics
     for card in cards:
+        # Total quantity
+        stats["total_quantity"] += card.quantity
+
+        # Count by stage
         if card.stage:
             stats["by_stage"][card.stage] = stats["by_stage"].get(card.stage, 0) + 1
 
-    # Count by type
-    for card in cards:
+        # Count by type
         if card.types:
             for card_type in card.types:
                 stats["by_type"][card_type] = stats["by_type"].get(card_type, 0) + 1
 
-    # Count by rarity
-    for card in cards:
+        # Count by rarity
         if card.rarity:
             stats["by_rarity"][card.rarity] = stats["by_rarity"].get(card.rarity, 0) + 1
 
-    # Count by category
-    for card in cards:
+        # Count by category
         stats["by_category"][card.category] = (
             stats["by_category"].get(card.category, 0) + 1
         )
 
-    # Count by set
-    for card in cards:
+        # Count by set
         set_id = card.tcgdex_id.split("-")[0]
         stats["by_set"][set_id] = stats["by_set"].get(set_id, 0) + 1
 
+        # Collect HP values
+        if card.hp is not None:
+            hp_values.append(card.hp)
+
     # Calculate average HP
-    hp_values = [c.hp for c in cards if c.hp is not None]
     if hp_values:
         stats["avg_hp"] = sum(hp_values) / len(hp_values)
 
