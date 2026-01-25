@@ -714,7 +714,7 @@ async def handle_cache(args: argparse.Namespace) -> int:
         Exit code (0 for success)
     """
     # Show cache statistics
-    if args.show or (not args.refresh and not args.clear):
+    if args.show or (not args.refresh and not args.clear and not args.update):
         stats = db.get_cache_stats()
 
         print("Cache Statistics")
@@ -752,6 +752,47 @@ async def handle_cache(args: argparse.Namespace) -> int:
                     f"\n💡 Tip: Set cache is {age.days} days old. Run 'pkm cache --refresh' to update."
                 )
 
+        return 0
+
+    # Update cache for owned cards
+    if args.update:
+        print("Updating cache for all owned cards...")
+
+        # Get all unique card IDs from owned cards
+        card_ids = db.get_owned_card_ids()
+
+        if not card_ids:
+            print("No owned cards found in collection.")
+            return 0
+
+        print(f"Found {len(card_ids)} unique cards to update")
+
+        updated_count = 0
+        error_count = 0
+
+        # Update each card
+        for tcgdex_id, language in card_ids:
+            try:
+                # Parse the tcgdex_id to get set_id and card_number
+                set_id, card_number = db.parse_tcgdex_id(tcgdex_id)
+
+                # Fetch card from API with the correct language
+                api_client = api.get_api(language)
+                card_info = await api_client.get_card(set_id, card_number)
+
+                # Cache the card
+                db.cache_card(card_info)
+
+                updated_count += 1
+                print(f"  ✓ Updated: {tcgdex_id} ({language})")
+
+            except Exception as e:
+                error_count += 1
+                print(f"  ✗ Failed: {tcgdex_id} ({language}) - {e}", file=sys.stderr)
+
+        print(
+            f"\n✓ Cache update complete: {updated_count} updated, {error_count} errors"
+        )
         return 0
 
     # Refresh caches
@@ -893,7 +934,10 @@ def create_parser() -> argparse.ArgumentParser:
         "--show", action="store_true", help="Show cache statistics (default)"
     )
     cache_parser.add_argument(
-        "--refresh", action="store_true", help="Refresh cache from API"
+        "--refresh", action="store_true", help="Refresh set cache from API"
+    )
+    cache_parser.add_argument(
+        "--update", action="store_true", help="Update cache for all owned cards"
     )
     cache_parser.add_argument(
         "--clear", action="store_true", help="Clear cache entries"

@@ -98,6 +98,7 @@ pkm import backup.json           # Import collection
 # Manage cache
 pkm cache                        # Show cache statistics
 pkm cache --refresh              # Refresh set cache from API
+pkm cache --update               # Update cache for all owned cards
 pkm cache --clear --type sets    # Clear set cache
 pkm cache --clear --type cards   # Clear card cache
 pkm cache --clear --type all     # Clear all caches
@@ -185,15 +186,24 @@ pkm cache
 # Refresh set cache from API (updates all set information)
 pkm cache --refresh
 
+# Update cache for all owned cards (refetches card data and raw JSON)
+pkm cache --update
+
 # Clear specific cache
 pkm cache --clear --type sets    # Clear only set cache
 pkm cache --clear --type cards   # Clear only card cache
 pkm cache --clear --type all     # Clear all caches (default)
 ```
 
-**When to refresh cache:**
-- New Pokemon TCG sets have been released
-- Set information appears outdated
+**When to use each option:**
+- `--refresh`: Updates the set cache with latest set information from TCGdex
+- `--update`: Refetches all cards in your collection to update card metadata and raw JSON files
+- `--clear`: Removes cached data (useful before doing a fresh update)
+
+**When to refresh/update cache:**
+- New Pokemon TCG sets have been released (`--refresh`)
+- Card information appears outdated (`--update`)
+- You want to update raw JSON files for owned cards (`--update`)
 - The cache is several weeks old (tool will show a tip if >7 days old)
 
 **Note:** The `sets` command automatically refreshes the set cache if it's older than 24 hours.

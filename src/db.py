@@ -334,6 +334,23 @@ def get_owned_cards(
         return [OwnedCard.from_db_row(row) for row in cursor.fetchall()]
 
 
+def get_owned_card_ids() -> list[tuple[str, str]]:
+    """Get all unique (tcgdex_id, language) pairs from owned cards.
+
+    Returns:
+        List of (tcgdex_id, language) tuples for all owned cards
+    """
+    with get_connection() as conn:
+        cursor = conn.execute(
+            """
+            SELECT DISTINCT tcgdex_id, language 
+            FROM cards 
+            ORDER BY tcgdex_id, language
+            """
+        )
+        return cursor.fetchall()
+
+
 # === Card Cache Operations ===
 
 
