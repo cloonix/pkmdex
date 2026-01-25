@@ -912,23 +912,24 @@ def handle_analyze(args: argparse.Namespace) -> int:
 
     # Show card list as table
     print(f"Collection Analysis ({len(results)} cards)")
-    print("─" * 100)
+    print("─" * 120)
     print(
-        f"{'ID':<12} {'Name':<25} {'Stage':<10} {'Type':<15} {'HP':<4} {'Rarity':<12} {'Qty':<3}"
+        f"{'ID':<12} {'Name (EN)':<25} {'Name (Local)':<25} {'Stage':<10} {'Type':<12} {'HP':<4} {'Rarity':<10} {'Qty':<3}"
     )
-    print("─" * 100)
+    print("─" * 120)
 
     for card in results:
         stage_str = card.stage or "—"
         type_str = ", ".join(card.types[:2]) if card.types else "—"
         hp_str = str(card.hp) if card.hp else "—"
         rarity_str = card.rarity or "—"
+        localized_str = card.localized_name[:24] if card.localized_name else "—"
 
         print(
-            f"{card.tcgdex_id:<12} {card.name[:24]:<25} {stage_str:<10} {type_str:<15} {hp_str:<4} {rarity_str:<12} {card.quantity:<3}"
+            f"{card.tcgdex_id:<12} {card.name[:24]:<25} {localized_str:<25} {stage_str:<10} {type_str:<12} {hp_str:<4} {rarity_str:<10} {card.quantity:<3}"
         )
 
-    print("─" * 100)
+    print("─" * 120)
     print(f"Total: {len(results)} cards")
 
     return 0

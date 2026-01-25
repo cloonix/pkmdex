@@ -29,7 +29,8 @@ class CardAnalysis:
     """Analysis result for a single card."""
 
     tcgdex_id: str
-    name: str
+    name: str  # English name from raw JSON
+    localized_name: Optional[str]  # Localized name from cache (German, French, etc.)
     language: str
     set_name: str
     stage: Optional[str]
@@ -51,7 +52,7 @@ def load_card_with_ownership(tcgdex_id: str, language: str) -> Optional[CardAnal
     Returns:
         CardAnalysis object or None if not found
     """
-    # Load raw JSON data
+    # Load raw JSON data (English)
     raw_data = config.load_raw_card_data(tcgdex_id)
     if not raw_data:
         return None
@@ -69,10 +70,15 @@ def load_card_with_ownership(tcgdex_id: str, language: str) -> Optional[CardAnal
     if total_quantity == 0:
         return None
 
+    # Get localized name from card cache
+    cached_card = db.get_cached_card(tcgdex_id)
+    localized_name = cached_card.name if cached_card else None
+
     # Extract data from raw JSON
     return CardAnalysis(
         tcgdex_id=tcgdex_id,
-        name=raw_data.get("name", "Unknown"),
+        name=raw_data.get("name", "Unknown"),  # English name
+        localized_name=localized_name,  # German/French/etc. name from cache
         language=language,
         set_name=raw_data.get("set", {}).get("name", "Unknown"),
         stage=raw_data.get("stage"),
