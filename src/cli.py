@@ -143,6 +143,9 @@ async def handle_add(args: argparse.Namespace) -> int:
         # Add to collection
         owned_card = db.add_card_variant(card_info.tcgdex_id, variant, language)
 
+        # Cache the localized name for display
+        db.cache_localized_name(card_info.tcgdex_id, language, card_info.name)
+
         if owned_card.quantity == 1:
             print(
                 f"✓ Added: {card_info.name} ({card_info.tcgdex_id}) [{language}] - {variant}"
@@ -315,9 +318,15 @@ def handle_list(args: argparse.Namespace) -> int:
 
     # Print each card
     for (tcgdex_id, language), card_variants in sorted(cards_by_id_lang.items()):
-        # Get card info from raw JSON instead of cache
+        # Get localized name from cache, fallback to English from raw JSON
+        name = db.get_localized_name(tcgdex_id, language)
+        if not name:
+            # Fallback to English name from raw JSON
+            raw_data = config.load_raw_card_data(tcgdex_id)
+            name = raw_data.get("name", "Unknown") if raw_data else "Unknown"
+
+        # Get rarity from raw JSON (rarity is not language-specific)
         raw_data = config.load_raw_card_data(tcgdex_id)
-        name = raw_data.get("name", "Unknown") if raw_data else "Unknown"
         rarity = raw_data.get("rarity", "") if raw_data else ""
 
         # Build variants string with quantities

@@ -274,7 +274,7 @@ def test_export_import_json(temp_db):
         # Export
         result = db.export_to_json(export_path)
         assert result["cards_count"] == 3
-        assert result["card_cache_count"] == 1
+        assert result["card_cache_count"] == 0  # card_cache removed
         assert result["set_cache_count"] == 1
         assert export_path.exists()
 
@@ -284,7 +284,7 @@ def test_export_import_json(temp_db):
         # Import (should replace everything)
         result = db.import_from_json(export_path)
         assert result["cards_count"] == 3
-        assert result["card_cache_count"] == 1
+        assert result["card_cache_count"] == 0  # card_cache removed
         assert result["set_cache_count"] == 1
 
         # Verify data matches original

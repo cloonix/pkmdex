@@ -59,6 +59,15 @@ CREATE INDEX IF NOT EXISTS idx_language ON cards(language);
 -- Composite index for analyzer lookups
 CREATE INDEX IF NOT EXISTS idx_cards_lookup ON cards(tcgdex_id, language);
 
+-- Localized card names cache (language-aware)
+CREATE TABLE IF NOT EXISTS localized_names (
+    tcgdex_id TEXT NOT NULL,
+    language TEXT NOT NULL,
+    name TEXT NOT NULL,
+    cached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (tcgdex_id, language)
+);
+
 -- Set information cache
 CREATE TABLE IF NOT EXISTS set_cache (
     set_id TEXT PRIMARY KEY,
@@ -152,6 +161,29 @@ def _migrate_add_composite_index(conn: sqlite3.Connection) -> None:
         print("✓ Migrated: Added composite index for faster analyzer queries")
 
 
+def _migrate_add_localized_names_table(conn: sqlite3.Connection) -> None:
+    """Add localized_names table for language-aware name caching.
+
+    Args:
+        conn: Database connection
+    """
+    # Check if table exists
+    cursor = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='localized_names'"
+    )
+    if not cursor.fetchone():
+        conn.execute("""
+            CREATE TABLE localized_names (
+                tcgdex_id TEXT NOT NULL,
+                language TEXT NOT NULL,
+                name TEXT NOT NULL,
+                cached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (tcgdex_id, language)
+            )
+        """)
+        print("✓ Migrated: Added localized_names table for language-aware caching")
+
+
 def init_database(db_path: Optional[Path] = None) -> None:
     """Initialize database with schema.
 
@@ -169,6 +201,7 @@ def init_database(db_path: Optional[Path] = None) -> None:
             _migrate_add_language_column(conn)
             _migrate_drop_card_cache(conn)
             _migrate_add_composite_index(conn)
+            _migrate_add_localized_names_table(conn)
         else:
             # New database - create schema
             conn.executescript(CREATE_SCHEMA)
@@ -433,6 +466,59 @@ def get_cached_card(tcgdex_id: str) -> Optional[CardInfo]:
     return None  # Cache table removed
 
 
+# === Localized Names Cache Operations ===
+
+
+def cache_localized_name(tcgdex_id: str, language: str, name: str) -> None:
+    """Cache a card's localized name.
+
+    Args:
+        tcgdex_id: Full TCGdex ID (e.g., 'me01-136')
+        language: Language code (e.g., 'de', 'en', 'fr')
+        name: Localized card name
+    """
+    with get_connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO localized_names (tcgdex_id, language, name)
+            VALUES (?, ?, ?)
+            ON CONFLICT(tcgdex_id, language) 
+            DO UPDATE SET name = ?, cached_at = CURRENT_TIMESTAMP
+            """,
+            (tcgdex_id, language, name, name),
+        )
+
+
+def get_localized_name(tcgdex_id: str, language: str) -> Optional[str]:
+    """Get a card's localized name from cache.
+
+    Args:
+        tcgdex_id: Full TCGdex ID (e.g., 'me01-136')
+        language: Language code (e.g., 'de', 'en', 'fr')
+
+    Returns:
+        Localized name if cached, None otherwise
+    """
+    with get_connection() as conn:
+        cursor = conn.execute(
+            "SELECT name FROM localized_names WHERE tcgdex_id = ? AND language = ?",
+            (tcgdex_id, language),
+        )
+        row = cursor.fetchone()
+        return row[0] if row else None
+
+
+def clear_localized_names() -> int:
+    """Clear all localized name cache.
+
+    Returns:
+        Number of entries removed
+    """
+    with get_connection() as conn:
+        cursor = conn.execute("DELETE FROM localized_names")
+        return cursor.rowcount
+
+
 # === Set Cache Operations ===
 
 
@@ -560,20 +646,15 @@ def get_collection_stats() -> dict:
         Dict with various statistics about the collection
     """
     with get_connection() as conn:
-        # Total unique cards and total quantity
+        # Total unique cards (count distinct tcgdex_id + language combinations)
         cursor = conn.execute(
-            """
-            SELECT 
-                cards.tcgdex_id,
-                cards.set_id,
-                COUNT(DISTINCT cards.variant) as variant_count,
-                SUM(cards.quantity) as total_quantity
-            FROM cards
-            GROUP BY cards.tcgdex_id
-            """
+            "SELECT COUNT(DISTINCT tcgdex_id || '-' || language) FROM cards"
         )
-        row = cursor.fetchone()
-        unique_cards, total_cards = row[0] or 0, row[1] or 0
+        unique_cards = cursor.fetchone()[0] or 0
+
+        # Total quantity across all cards
+        cursor = conn.execute("SELECT SUM(quantity) FROM cards")
+        total_cards = cursor.fetchone()[0] or 0
 
         # Sets represented
         cursor = conn.execute("SELECT COUNT(DISTINCT set_id) FROM cards")
