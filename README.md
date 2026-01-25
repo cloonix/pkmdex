@@ -219,17 +219,30 @@ pkm cache --clear --type all     # Clear all caches (default)
 
 ## Raw JSON Data Storage
 
-The tool automatically saves complete API responses as JSON files for every card you fetch. This gives you access to the full, unprocessed data from TCGdex.
+The tool automatically saves complete API responses as **English JSON files** for every card you fetch. This provides consistent data for analysis while the UI displays localized content.
+
+### Why English-Only?
+
+- **Consistent Analysis**: Filter by `stage="Stage1"` works for all cards regardless of UI language
+- **Standardized Fields**: All type names, rarities, and stages use English values
+- **Single Source of Truth**: One canonical format for all analysis queries
+- **Localized Display**: The UI still shows German/French/Japanese names via the cache
 
 ### Viewing Raw Data
 
 ```bash
-# Display formatted JSON from the API
+# Display formatted English JSON from the API
 pkm info de:me01:136 --raw
+
+# Even for German cards, raw JSON is in English:
+# - "name": "Bulbasaur" (not "Bisasam")
+# - "types": ["Grass"] (not "Pflanze")
+# - "stage": "Basic" (not "Basis")
 
 # Raw data is automatically saved when you:
 # - Add a card: pkm add de:me01:136
 # - Get card info: pkm info de:me01:136
+# - Update cache: pkm cache --update
 ```
 
 ### Where Raw Data is Stored
@@ -238,10 +251,12 @@ Raw JSON files are saved in your data directory:
 - **Default location**: `~/.local/share/pkmdex/raw_data/cards/`
 - **Custom location**: `<your-custom-path>/raw_data/cards/`
 - **File naming**: `{tcgdex_id}.json` (e.g., `me01-136.json`)
+- **Language**: Always English for consistent analysis
 
 You can directly access these files for:
 - Building custom tools
-- Data analysis
+- Collection analysis (via `pkm analyze`)
+- Data science / statistics
 - Offline reference
 - Debugging API responses
 
@@ -252,6 +267,9 @@ cat ~/.local/share/pkmdex/raw_data/cards/me01-136.json
 
 # Pretty-print with jq
 jq . ~/.local/share/pkmdex/raw_data/cards/me01-136.json
+
+# Query with jq
+jq '.stage' ~/.local/share/pkmdex/raw_data/cards/*.json | sort | uniq -c
 ```
 
 ## Collection Analysis
