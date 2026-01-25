@@ -41,7 +41,9 @@ class CardAnalysis:
     variants: list[str]
 
 
-def load_card_with_ownership(tcgdex_id: str, language: str) -> Optional[CardAnalysis]:
+def load_card_with_ownership(
+    tcgdex_id: str, language: str
+) -> Optional[tuple[CardAnalysis, dict]]:
     """Load card data from raw JSON and combine with ownership info.
 
     Args:
@@ -49,7 +51,8 @@ def load_card_with_ownership(tcgdex_id: str, language: str) -> Optional[CardAnal
         language: Language code
 
     Returns:
-        CardAnalysis object or None if not found
+        Tuple of (CardAnalysis, raw_data_dict) or None if not found
+        Returning raw_data avoids duplicate loading in analyze_collection
     """
     # Load raw JSON data (English)
     raw_data = config.load_raw_card_data(tcgdex_id)
@@ -63,7 +66,7 @@ def load_card_with_ownership(tcgdex_id: str, language: str) -> Optional[CardAnal
         return None
 
     # Extract data from raw JSON
-    return CardAnalysis(
+    card = CardAnalysis(
         tcgdex_id=tcgdex_id,
         name=raw_data.get("name", "Unknown"),  # English name
         language=language,
@@ -76,6 +79,8 @@ def load_card_with_ownership(tcgdex_id: str, language: str) -> Optional[CardAnal
         quantity=total_quantity,
         variants=card_variants,
     )
+
+    return (card, raw_data)
 
 
 def analyze_collection(filter_criteria: AnalysisFilter) -> list[CardAnalysis]:
@@ -93,19 +98,16 @@ def analyze_collection(filter_criteria: AnalysisFilter) -> list[CardAnalysis]:
     results = []
 
     for tcgdex_id, language in card_ids:
-        # Apply language filter
+        # Apply language filter early
         if filter_criteria.language and language != filter_criteria.language:
             continue
 
-        # Load card with ownership info
-        card = load_card_with_ownership(tcgdex_id, language)
-        if not card:
+        # Load card with ownership info (returns raw_data too, avoiding duplicate load)
+        result = load_card_with_ownership(tcgdex_id, language)
+        if not result:
             continue
 
-        # Load raw JSON for additional filtering
-        raw_data = config.load_raw_card_data(tcgdex_id)
-        if not raw_data:
-            continue
+        card, raw_data = result
 
         # Apply set_id filter
         if filter_criteria.set_id:

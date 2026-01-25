@@ -133,14 +133,18 @@ def test_load_card_with_ownership_success(temp_db, temp_data_dir):
     result = analyzer.load_card_with_ownership("me01-001", "de")
 
     assert result is not None
-    assert result.tcgdex_id == "me01-001"
-    assert result.name == "Bulbasaur"
-    assert result.language == "de"
-    assert result.stage == "Basic"
-    assert result.types == ["Grass"]
-    assert result.hp == 60
-    assert result.quantity == 3  # 2 normal + 1 reverse
-    assert set(result.variants) == {"normal", "reverse"}
+    card, raw_data = result
+    assert card.tcgdex_id == "me01-001"
+    assert card.name == "Bulbasaur"
+    assert card.language == "de"
+    assert card.stage == "Basic"
+    assert card.types == ["Grass"]
+    assert card.hp == 60
+    assert card.quantity == 3  # 2 normal + 1 reverse
+    assert set(card.variants) == {"normal", "reverse"}
+    # Check raw_data is also returned
+    assert raw_data is not None
+    assert raw_data["name"] == "Bulbasaur"
 
 
 def test_load_card_with_ownership_no_raw_json(temp_db, temp_data_dir):
@@ -181,9 +185,10 @@ def test_load_card_with_ownership_null_types(temp_db, temp_data_dir):
     result = analyzer.load_card_with_ownership("me01-100", "de")
 
     assert result is not None
-    assert result.types == []
-    assert result.stage is None
-    assert result.category == "Trainer"
+    card, raw_data = result
+    assert card.types == []
+    assert card.stage is None
+    assert card.category == "Trainer"
 
 
 def test_analyze_collection_no_filters(temp_db, temp_data_dir):
