@@ -157,18 +157,23 @@ def analyze_collection(filter_criteria: AnalysisFilter) -> list[CardAnalysis]:
             if set_id != filter_criteria.set_id:
                 continue
 
-        # Apply stage filter
-        if filter_criteria.stage and card.stage != filter_criteria.stage:
-            continue
-
-        # Apply type filter
-        if filter_criteria.type and (
-            not card.types or filter_criteria.type not in card.types
+        # Apply stage filter (case-insensitive)
+        if filter_criteria.stage and (
+            not card.stage or card.stage.lower() != filter_criteria.stage.lower()
         ):
             continue
 
-        # Apply rarity filter
-        if filter_criteria.rarity and card.rarity != filter_criteria.rarity:
+        # Apply type filter (case-insensitive)
+        if filter_criteria.type and (
+            not card.types
+            or not any(t.lower() == filter_criteria.type.lower() for t in card.types)
+        ):
+            continue
+
+        # Apply rarity filter (case-insensitive)
+        if filter_criteria.rarity and (
+            not card.rarity or card.rarity.lower() != filter_criteria.rarity.lower()
+        ):
             continue
 
         # Apply HP filters
@@ -182,8 +187,11 @@ def analyze_collection(filter_criteria: AnalysisFilter) -> list[CardAnalysis]:
         ):
             continue
 
-        # Apply category filter
-        if filter_criteria.category and card.category != filter_criteria.category:
+        # Apply category filter (case-insensitive)
+        if filter_criteria.category and (
+            not card.category
+            or card.category.lower() != filter_criteria.category.lower()
+        ):
             continue
 
         # NOTE: regulation and artist filters removed in v2 schema

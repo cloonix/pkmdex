@@ -533,3 +533,68 @@ def test_get_collection_statistics_by_set(temp_db, temp_data_dir):
     stats = analyzer.get_collection_statistics(cards)
 
     assert stats["by_set"] == {"me01": 2, "swsh1": 1}
+
+
+def test_analyze_collection_case_insensitive_filters(temp_db, temp_data_dir):
+    """Test analyze collection with case-insensitive filters."""
+    # Setup cards
+    db.upsert_card(
+        "me01-001",
+        "Charmander",
+        "me01",
+        "001",
+        stage="Basic",
+        types='["Fire"]',
+        rarity="Common",
+        category="Pokemon",
+    )
+    db.upsert_card(
+        "me01-002",
+        "Squirtle",
+        "me01",
+        "002",
+        stage="Stage1",
+        types='["Water"]',
+        rarity="Rare",
+        category="Pokemon",
+    )
+    db.upsert_card_name("me01-001", "de", "Glumanda")
+    db.upsert_card_name("me01-002", "de", "Schiggy")
+
+    # Add ownership
+    db.add_owned_card("me01-001", "normal", "de", 1)
+    db.add_owned_card("me01-002", "normal", "de", 1)
+
+    # Test case-insensitive type filter
+    results = analyzer.analyze_collection(AnalysisFilter(type="water"))
+    assert len(results) == 1
+    assert results[0].name == "Squirtle"
+
+    results = analyzer.analyze_collection(AnalysisFilter(type="WATER"))
+    assert len(results) == 1
+    assert results[0].name == "Squirtle"
+
+    # Test case-insensitive stage filter
+    results = analyzer.analyze_collection(AnalysisFilter(stage="basic"))
+    assert len(results) == 1
+    assert results[0].name == "Charmander"
+
+    results = analyzer.analyze_collection(AnalysisFilter(stage="BASIC"))
+    assert len(results) == 1
+    assert results[0].name == "Charmander"
+
+    # Test case-insensitive rarity filter
+    results = analyzer.analyze_collection(AnalysisFilter(rarity="common"))
+    assert len(results) == 1
+    assert results[0].name == "Charmander"
+
+    results = analyzer.analyze_collection(AnalysisFilter(rarity="RARE"))
+    assert len(results) == 1
+    assert results[0].name == "Squirtle"
+
+    # Test case-insensitive category filter
+    results = analyzer.analyze_collection(AnalysisFilter(category="pokemon"))
+    assert len(results) == 2
+
+    results = analyzer.analyze_collection(AnalysisFilter(category="POKEMON"))
+    assert len(results) == 2
