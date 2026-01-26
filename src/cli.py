@@ -652,6 +652,135 @@ def handle_stats(args: argparse.Namespace) -> int:
     return 0
 
 
+async def handle_sync(args: argparse.Namespace) -> int:
+    """Handle 'sync' command - refresh card data from API.
+
+    Args:
+        args: Parsed command-line arguments
+
+    Returns:
+        Exit code (0 for success)
+    """
+    # Determine which cards to sync
+    if hasattr(args, "stale") and args.stale:
+        # Sync cards older than N days
+        cards_to_sync = db.get_stale_cards(days=args.stale)
+        if not cards_to_sync:
+            print(f"✓ All cards synced within last {args.stale} days")
+            return 0
+        print(f"Found {len(cards_to_sync)} cards older than {args.stale} days")
+    else:
+        # Sync all owned cards
+        cards_to_sync = db.get_owned_tcgdex_ids()
+        if not cards_to_sync:
+            print("No cards in collection to sync")
+            return 0
+        print(f"Syncing {len(cards_to_sync)} cards from collection...")
+
+    price_changes = []
+    synced_count = 0
+    errors = []
+
+    for tcgdex_id in cards_to_sync:
+        try:
+            set_id, card_number = db.parse_tcgdex_id(tcgdex_id)
+
+            # Get old price for comparison
+            old_card = db.get_card(tcgdex_id)
+            old_price = old_card.get("price_eur") if old_card else None
+
+            # Fetch fresh English data
+            api_en = api.get_api("en")
+            card_info_en = await api_en.get_card(set_id, card_number)
+
+            # Get raw response for extra fields
+            raw_response = await api_en.sdk.card.get(tcgdex_id)
+            stage = (
+                getattr(raw_response, "stage", None)
+                if hasattr(raw_response, "stage")
+                else None
+            )
+            category = (
+                getattr(raw_response, "category", None)
+                if hasattr(raw_response, "category")
+                else None
+            )
+
+            # TODO: Extract price from raw_response
+            # For now, keep old price or set to None
+            new_price = old_price  # Placeholder
+
+            # Update cards table
+            db.upsert_card(
+                tcgdex_id=tcgdex_id,
+                name=card_info_en.name,
+                set_id=set_id,
+                card_number=card_number,
+                rarity=card_info_en.rarity,
+                types=json.dumps(card_info_en.types) if card_info_en.types else None,
+                hp=card_info_en.hp,
+                stage=stage,
+                category=category,
+                image_url=card_info_en.image_url,
+                price_eur=new_price,
+                price_usd=None,
+                legal_standard=None,
+                legal_expanded=None,
+            )
+
+            # Track price changes
+            if old_price and new_price and abs(old_price - new_price) > 0.10:
+                direction = "↑" if new_price > old_price else "↓"
+                change_pct = ((new_price - old_price) / old_price) * 100
+                price_changes.append(
+                    f"  {direction} {card_info_en.name}: €{old_price:.2f} → €{new_price:.2f} ({change_pct:+.1f}%)"
+                )
+
+            # Update localized names for all languages owned
+            languages = db.get_languages_for_card(tcgdex_id)
+            for lang in languages:
+                if lang == "en":
+                    db.upsert_card_name(tcgdex_id, "en", card_info_en.name)
+                else:
+                    try:
+                        api_lang = api.get_api(lang)
+                        card_info_lang = await api_lang.get_card(set_id, card_number)
+                        db.upsert_card_name(tcgdex_id, lang, card_info_lang.name)
+                    except api.PokedexAPIError:
+                        # Language not available, skip
+                        pass
+
+            synced_count += 1
+
+            # Show progress every 50 cards
+            if synced_count % 50 == 0:
+                print(
+                    f"  Synced {synced_count}/{len(cards_to_sync)}...", file=sys.stderr
+                )
+
+        except api.PokedexAPIError as e:
+            errors.append(f"  Error syncing {tcgdex_id}: {e}")
+        except Exception as e:
+            errors.append(f"  Unexpected error for {tcgdex_id}: {e}")
+
+    # Print summary
+    print(f"\n✓ Synced {synced_count} cards")
+
+    if hasattr(args, "show_changes") and args.show_changes and price_changes:
+        print("\nPrice changes:")
+        for change in price_changes:
+            print(change)
+
+    if errors:
+        print(f"\n⚠ {len(errors)} errors occurred:", file=sys.stderr)
+        for error in errors[:10]:  # Show first 10 errors
+            print(error, file=sys.stderr)
+        if len(errors) > 10:
+            print(f"  ... and {len(errors) - 10} more", file=sys.stderr)
+
+    return 0
+
+
 def handle_setup(args: argparse.Namespace) -> int:
     """Handle 'setup' command.
 
@@ -1056,6 +1185,22 @@ def create_parser() -> argparse.ArgumentParser:
     # Stats command
     stats_parser = subparsers.add_parser("stats", help="Show collection statistics")
 
+    # Sync command
+    sync_parser = subparsers.add_parser(
+        "sync", help="Refresh card data from API (prices, legality)"
+    )
+    sync_parser.add_argument(
+        "--stale",
+        type=int,
+        metavar="DAYS",
+        help="Only sync cards older than N days (default: sync all)",
+    )
+    sync_parser.add_argument(
+        "--show-changes",
+        action="store_true",
+        help="Show price changes after sync",
+    )
+
     # Setup command
     setup_parser = subparsers.add_parser(
         "setup", help="Configure database path and settings"
@@ -1175,6 +1320,8 @@ def main() -> None:
         exit_code = asyncio.run(handle_info(args))
     elif args.command == "stats":
         exit_code = handle_stats(args)
+    elif args.command == "sync":
+        exit_code = asyncio.run(handle_sync(args))
     elif args.command == "setup":
         exit_code = handle_setup(args)
     elif args.command == "export":
