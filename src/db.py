@@ -159,7 +159,341 @@ def parse_tcgdex_id(tcgdex_id: str) -> tuple[str, str]:
     return parts[0], parts[1]
 
 
-# === Card Operations ===
+# === v2 Schema Helper Functions ===
+
+
+def upsert_card(
+    tcgdex_id: str,
+    name: str,
+    set_id: str,
+    card_number: str,
+    rarity: Optional[str] = None,
+    types: Optional[str] = None,
+    hp: Optional[int] = None,
+    stage: Optional[str] = None,
+    category: Optional[str] = None,
+    image_url: Optional[str] = None,
+    price_eur: Optional[float] = None,
+    price_usd: Optional[float] = None,
+    legal_standard: Optional[bool] = None,
+    legal_expanded: Optional[bool] = None,
+) -> None:
+    """Insert or update canonical card data (English).
+
+    Args:
+        tcgdex_id: Full TCGdex ID (e.g., "me01-136")
+        name: English card name
+        set_id: Set identifier (e.g., "me01")
+        card_number: Card number in set (e.g., "136")
+        rarity: Card rarity (English)
+        types: JSON string of types (e.g., '["Grass"]')
+        hp: Hit points
+        stage: Card stage (Basic, Stage1, etc.)
+        category: Card category (Pokémon, Trainer, Energy)
+        image_url: High-res image URL
+        price_eur: Cardmarket average price in EUR
+        price_usd: TCGPlayer market price in USD
+        legal_standard: Legal in Standard format
+        legal_expanded: Legal in Expanded format
+    """
+    with get_connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO cards (
+                tcgdex_id, set_id, card_number, name, rarity, types, hp, stage,
+                category, image_url, price_eur, price_usd, legal_standard, legal_expanded
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(tcgdex_id) DO UPDATE SET
+                name = excluded.name,
+                rarity = excluded.rarity,
+                types = excluded.types,
+                hp = excluded.hp,
+                stage = excluded.stage,
+                category = excluded.category,
+                image_url = excluded.image_url,
+                price_eur = excluded.price_eur,
+                price_usd = excluded.price_usd,
+                legal_standard = excluded.legal_standard,
+                legal_expanded = excluded.legal_expanded,
+                last_synced = CURRENT_TIMESTAMP
+            """,
+            (
+                tcgdex_id,
+                set_id,
+                card_number,
+                name,
+                rarity,
+                types,
+                hp,
+                stage,
+                category,
+                image_url,
+                price_eur,
+                price_usd,
+                legal_standard,
+                legal_expanded,
+            ),
+        )
+        conn.commit()
+
+
+def get_card(tcgdex_id: str) -> Optional[dict]:
+    """Get canonical card data.
+
+    Args:
+        tcgdex_id: Full TCGdex ID
+
+    Returns:
+        Dict with card data or None if not found
+    """
+    with get_connection() as conn:
+        cursor = conn.execute("SELECT * FROM cards WHERE tcgdex_id = ?", (tcgdex_id,))
+        row = cursor.fetchone()
+        if not row:
+            return None
+
+        columns = [desc[0] for desc in cursor.description]
+        return dict(zip(columns, row))
+
+
+def get_cards_by_set(set_id: str) -> list[dict]:
+    """Get all canonical cards in a set.
+
+    Args:
+        set_id: Set identifier (e.g., "me01")
+
+    Returns:
+        List of card data dicts
+    """
+    with get_connection() as conn:
+        cursor = conn.execute(
+            "SELECT * FROM cards WHERE set_id = ? ORDER BY card_number", (set_id,)
+        )
+        columns = [desc[0] for desc in cursor.description]
+        return [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+
+def get_stale_cards(days: int = 7) -> list[str]:
+    """Get tcgdex_ids of cards needing sync (owned and stale).
+
+    Args:
+        days: Cards older than this many days are stale
+
+    Returns:
+        List of tcgdex_ids
+    """
+    with get_connection() as conn:
+        cursor = conn.execute(
+            """
+            SELECT c.tcgdex_id
+            FROM cards c
+            WHERE c.tcgdex_id IN (SELECT DISTINCT tcgdex_id FROM owned_cards)
+              AND (julianday('now') - julianday(c.last_synced)) > ?
+            ORDER BY c.last_synced ASC
+            """,
+            (days,),
+        )
+        return [row[0] for row in cursor.fetchall()]
+
+
+def upsert_card_name(tcgdex_id: str, language: str, name: str) -> None:
+    """Insert or update localized card name.
+
+    Args:
+        tcgdex_id: Full TCGdex ID
+        language: ISO 639-1 language code (e.g., "de", "fr")
+        name: Localized card name
+    """
+    with get_connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO card_names (tcgdex_id, language, name)
+            VALUES (?, ?, ?)
+            ON CONFLICT(tcgdex_id, language) DO UPDATE SET
+                name = excluded.name
+            """,
+            (tcgdex_id, language, name),
+        )
+        conn.commit()
+
+
+def get_card_name(tcgdex_id: str, language: str) -> Optional[str]:
+    """Get localized card name.
+
+    Args:
+        tcgdex_id: Full TCGdex ID
+        language: ISO 639-1 language code
+
+    Returns:
+        Localized name or None if not found
+    """
+    with get_connection() as conn:
+        cursor = conn.execute(
+            "SELECT name FROM card_names WHERE tcgdex_id = ? AND language = ?",
+            (tcgdex_id, language),
+        )
+        row = cursor.fetchone()
+        return row[0] if row else None
+
+
+def get_languages_for_card(tcgdex_id: str) -> list[str]:
+    """Get all languages owned for a specific card.
+
+    Args:
+        tcgdex_id: Full TCGdex ID
+
+    Returns:
+        List of language codes
+    """
+    with get_connection() as conn:
+        cursor = conn.execute(
+            "SELECT DISTINCT language FROM owned_cards WHERE tcgdex_id = ? ORDER BY language",
+            (tcgdex_id,),
+        )
+        return [row[0] for row in cursor.fetchall()]
+
+
+def add_owned_card(
+    tcgdex_id: str, variant: str, language: str, quantity: int = 1
+) -> None:
+    """Add or update owned card.
+
+    Args:
+        tcgdex_id: Full TCGdex ID
+        variant: Variant name (normal, reverse, holo, firstEdition)
+        language: Language of physical card owned
+        quantity: Quantity to add (default 1)
+    """
+    with get_connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO owned_cards (tcgdex_id, variant, language, quantity)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(tcgdex_id, variant, language) DO UPDATE SET
+                quantity = quantity + ?
+            """,
+            (tcgdex_id, variant, language, quantity, quantity),
+        )
+        conn.commit()
+
+
+def remove_owned_card(
+    tcgdex_id: str, variant: str, language: str, quantity: int = 1
+) -> Optional[int]:
+    """Remove quantity from owned card, delete if reaches 0.
+
+    Args:
+        tcgdex_id: Full TCGdex ID
+        variant: Variant name
+        language: Language of physical card
+        quantity: Quantity to remove (default 1)
+
+    Returns:
+        New quantity or None if deleted
+    """
+    with get_connection() as conn:
+        # Get current quantity
+        cursor = conn.execute(
+            "SELECT quantity FROM owned_cards WHERE tcgdex_id = ? AND variant = ? AND language = ?",
+            (tcgdex_id, variant, language),
+        )
+        row = cursor.fetchone()
+
+        if not row:
+            return None
+
+        current_qty = row[0]
+        new_qty = current_qty - quantity
+
+        if new_qty <= 0:
+            # Delete the record
+            conn.execute(
+                "DELETE FROM owned_cards WHERE tcgdex_id = ? AND variant = ? AND language = ?",
+                (tcgdex_id, variant, language),
+            )
+            conn.commit()
+            return None
+        else:
+            # Update quantity
+            conn.execute(
+                "UPDATE owned_cards SET quantity = ? WHERE tcgdex_id = ? AND variant = ? AND language = ?",
+                (new_qty, tcgdex_id, variant, language),
+            )
+            conn.commit()
+            return new_qty
+
+
+def get_v2_owned_cards(
+    set_id: Optional[str] = None, language: Optional[str] = None
+) -> list[dict]:
+    """Get owned cards with card data and localized names (v2 schema).
+
+    Args:
+        set_id: Optional set ID filter
+        language: Optional language filter
+
+    Returns:
+        List of dicts with owned card data + card metadata + localized name
+    """
+    with get_connection() as conn:
+        query = """
+            SELECT 
+                o.id,
+                o.tcgdex_id,
+                o.variant,
+                o.language,
+                o.quantity,
+                o.added_at,
+                c.set_id,
+                c.card_number,
+                c.name AS name_en,
+                COALESCE(n.name, c.name) AS display_name,
+                c.rarity,
+                c.hp,
+                c.stage,
+                c.types,
+                c.category,
+                c.image_url,
+                c.price_eur,
+                c.price_usd,
+                c.legal_standard,
+                c.legal_expanded
+            FROM owned_cards o
+            JOIN cards c ON o.tcgdex_id = c.tcgdex_id
+            LEFT JOIN card_names n ON o.tcgdex_id = n.tcgdex_id AND o.language = n.language
+            WHERE 1=1
+        """
+        params = []
+
+        if set_id:
+            query += " AND c.set_id = ?"
+            params.append(set_id)
+
+        if language:
+            query += " AND o.language = ?"
+            params.append(language)
+
+        query += " ORDER BY c.set_id, c.card_number"
+
+        cursor = conn.execute(query, params)
+        columns = [desc[0] for desc in cursor.description]
+        return [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+
+def get_owned_tcgdex_ids() -> list[str]:
+    """Get all unique tcgdex_ids owned.
+
+    Returns:
+        List of tcgdex_ids
+    """
+    with get_connection() as conn:
+        cursor = conn.execute(
+            "SELECT DISTINCT tcgdex_id FROM owned_cards ORDER BY tcgdex_id"
+        )
+        return [row[0] for row in cursor.fetchall()]
+
+
+# === v1 Compatibility Functions (Deprecated - Keep for migration) ===
 
 
 def add_card_variant(
