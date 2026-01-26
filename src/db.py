@@ -618,13 +618,142 @@ def get_v2_collection_stats() -> dict:
 
 # === v1 Compatibility Functions - REMOVED ===
 # The v1 schema compatibility functions have been removed as the migration
-# to v2 schema is complete. All code now uses the v2 functions:
-# - add_owned_card() instead of add_card_variant()
-# - remove_owned_card() instead of remove_card_variant()
-# - get_v2_owned_cards() instead of get_owned_cards()
-# - get_v2_collection_stats() instead of get_collection_stats()  
-#
-# If you need to migrate a v1 database, use: pkm migrate
+# to v2 schema is complete. See git history if needed.
+# Removed: add_card_variant, remove_card_variant, get_owned_cards,
+#           get_owned_card_ids, get_card_ownership, get_collection_stats
+
+
+
+
+
+def remove_all_card_variants(tcgdex_id: str, language: str = "de") -> int:
+    """Remove all variants of a card in a specific language (v2 schema).
+
+    Args:
+        tcgdex_id: Full TCGdex ID
+        language: Language code (e.g., 'de', 'en')
+
+    Returns:
+        Number of variants removed
+    """
+    with get_connection() as conn:
+        cursor = conn.execute(
+            "DELETE FROM owned_cards WHERE tcgdex_id = ? AND language = ? RETURNING *",
+            (tcgdex_id, language),
+        )
+        deleted_rows = cursor.fetchall()
+        conn.commit()
+        return len(deleted_rows)
+
+
+
+
+# === Set Cache Operations ===
+
+
+def cache_sets(set_infos: list[SetInfo]) -> None:
+    """Cache multiple sets from API.
+
+    Args:
+        set_infos: List of SetInfo instances to cache
+    """
+    with get_connection() as conn:
+        for set_info in set_infos:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO set_cache
+                (set_id, name, card_count, release_date, serie_id, serie_name, cached_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    set_info.set_id,
+                    set_info.name,
+                    set_info.card_count,
+                    set_info.release_date,
+                    set_info.serie_id,
+                    set_info.serie_name,
+                    set_info.cached_at.isoformat(),
+                ),
+            )
+        conn.commit()
+
+
+def get_cached_sets(search_term: Optional[str] = None) -> list[SetInfo]:
+    """Get cached sets, optionally filtered by search term.
+
+    Args:
+        search_term: Optional case-insensitive search term for set name
+
+    Returns:
+        List of SetInfo instances
+    """
+    with get_connection() as conn:
+        if search_term:
+            cursor = conn.execute(
+                "SELECT * FROM set_cache WHERE LOWER(name) LIKE LOWER(?) OR LOWER(set_id) LIKE LOWER(?) ORDER BY set_id",
+                (f"%{search_term}%", f"%{search_term}%"),
+            )
+        else:
+            cursor = conn.execute("SELECT * FROM set_cache ORDER BY set_id")
+
+        return [SetInfo.from_db_row(row) for row in cursor.fetchall()]
+
+
+def get_set_cache_age() -> Optional[datetime]:
+    """Get the age of the set cache.
+
+    Returns:
+        Datetime of oldest cached set, None if cache is empty
+    """
+    with get_connection() as conn:
+        cursor = conn.execute("SELECT MIN(cached_at) FROM set_cache")
+        row = cursor.fetchone()
+
+        if row and row[0]:
+            return datetime.fromisoformat(row[0])
+        return None
+
+
+def clear_set_cache() -> int:
+    """Clear all cached set information.
+
+    Returns:
+        Number of cache entries cleared
+    """
+    with get_connection() as conn:
+        cursor = conn.execute("DELETE FROM set_cache RETURNING *")
+        deleted_rows = cursor.fetchall()
+        conn.commit()
+        return len(deleted_rows)
+
+
+def get_cache_stats() -> dict:
+    """Get cache statistics.
+
+    Returns:
+        Dict with cache counts and age information
+    """
+    with get_connection() as conn:
+        # Set cache stats
+        cursor = conn.execute(
+            "SELECT COUNT(*), MIN(cached_at), MAX(cached_at) FROM set_cache"
+        )
+        row = cursor.fetchone()
+        set_count = row[0] or 0
+        set_oldest = datetime.fromisoformat(row[1]) if row[1] else None
+        set_newest = datetime.fromisoformat(row[2]) if row[2] else None
+
+    return {
+        "set_cache_count": set_count,
+        "set_cache_oldest": set_oldest,
+        "set_cache_newest": set_newest,
+    }
+
+
+# === Collection Statistics ===
+
+
+
 
 
 # === Export/Import Operations ===
