@@ -265,16 +265,27 @@ def test_remove_all_card_variants(temp_db):
     assert removed == 0
 
 
-@pytest.mark.skip(reason="export/import need v2 schema updates - TODO")
 def test_export_import_json(temp_db):
-    """Test exporting and importing collection to/from JSON."""
+    """Test exporting and importing collection to/from JSON (v2 schema)."""
     import tempfile
     from pathlib import Path
 
-    # Add some test data
-    db.add_card_variant("me01-136", "normal", "de", 2)
-    db.add_card_variant("me01-136", "reverse", "de", 1)
-    db.add_card_variant("swsh3-045", "holo", "en", 3)
+    # Setup test data (v2 schema)
+    # Add cards
+    db.upsert_card("me01-136", "Bulbasaur", "me01", "136", rarity="Common")
+    db.upsert_card("me01-137", "Ivysaur", "me01", "137", rarity="Uncommon")
+    db.upsert_card("swsh3-045", "Pikachu", "swsh3", "045", rarity="Rare")
+
+    # Add localized names
+    db.upsert_card_name("me01-136", "de", "Bisasam")
+    db.upsert_card_name("me01-136", "en", "Bulbasaur")
+    db.upsert_card_name("me01-137", "de", "Bisaknosp")
+    db.upsert_card_name("swsh3-045", "en", "Pikachu")
+
+    # Add ownership
+    db.add_owned_card("me01-136", "normal", "de", 2)
+    db.add_owned_card("me01-136", "reverse", "de", 1)
+    db.add_owned_card("swsh3-045", "holo", "en", 3)
 
     # Cache a set
     db.cache_sets(
@@ -298,31 +309,40 @@ def test_export_import_json(temp_db):
     try:
         # Export
         result = db.export_to_json(export_path)
-        assert result["cards_count"] == 3
-        assert result["card_cache_count"] == 0  # card_cache removed
+        assert result["cards_count"] == 3  # 3 cards in cards table
+        assert result["card_names_count"] == 4  # 4 localized names
+        assert result["owned_cards_count"] == 3  # 3 ownership records
         assert result["set_cache_count"] == 1
+        assert result["version"] == "2.0"
         assert export_path.exists()
 
         # Add more data to verify it gets replaced
-        db.add_card_variant("sv06-001", "normal", "fr", 5)
+        db.upsert_card("sv06-001", "Charizard", "sv06", "001")
+        db.add_owned_card("sv06-001", "normal", "fr", 5)
 
         # Import (should replace everything)
         result = db.import_from_json(export_path)
         assert result["cards_count"] == 3
-        assert result["card_cache_count"] == 0  # card_cache removed
+        assert result["card_names_count"] == 4
+        assert result["owned_cards_count"] == 3
         assert result["set_cache_count"] == 1
+        assert result["version"] == "2.0"
 
         # Verify data matches original
-        owned = db.get_owned_cards()
-        assert len(owned) == 3
+        owned = db.get_v2_owned_cards()
+        assert len(owned) == 3  # Back to original 3
 
         # Check specific card
-        de_cards = db.get_owned_cards(language="de")
-        assert len(de_cards) == 2
+        de_cards = db.get_v2_owned_cards(language="de")
+        assert len(de_cards) == 2  # me01-136 normal and reverse
 
         # Verify French card was removed by import
-        fr_cards = db.get_owned_cards(language="fr")
+        fr_cards = db.get_v2_owned_cards(language="fr")
         assert len(fr_cards) == 0
+
+        # Verify card names were imported
+        assert db.get_card_name("me01-136", "de") == "Bisasam"
+        assert db.get_card_name("me01-136", "en") == "Bulbasaur"
 
     finally:
         # Cleanup

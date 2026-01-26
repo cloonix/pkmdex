@@ -960,7 +960,7 @@ def get_collection_stats() -> dict:
 
 
 def export_to_json(output_path: Path) -> dict:
-    """Export entire collection to JSON file.
+    """Export entire collection to JSON file (v2 schema).
 
     Args:
         output_path: Path to write JSON file
@@ -969,43 +969,36 @@ def export_to_json(output_path: Path) -> dict:
         Dict with export metadata (card count, timestamp, etc.)
     """
     with get_connection() as conn:
-        # Export owned cards
+        # Export canonical card data
         cursor = conn.execute("SELECT * FROM cards ORDER BY set_id, card_number")
-        cards = [
-            {
-                "id": row[0],
-                "set_id": row[1],
-                "card_number": row[2],
-                "tcgdex_id": row[3],
-                "variant": row[4],
-                "language": row[5],
-                "quantity": row[6],
-                "added_at": row[7],
-                "updated_at": row[8],
-            }
-            for row in cursor.fetchall()
-        ]
+        columns = [desc[0] for desc in cursor.description]
+        cards = [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+        # Export localized card names
+        cursor = conn.execute("SELECT * FROM card_names ORDER BY tcgdex_id, language")
+        columns = [desc[0] for desc in cursor.description]
+        card_names = [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+        # Export owned cards (user's collection)
+        cursor = conn.execute(
+            "SELECT * FROM owned_cards ORDER BY tcgdex_id, variant, language"
+        )
+        columns = [desc[0] for desc in cursor.description]
+        owned_cards = [dict(zip(columns, row)) for row in cursor.fetchall()]
 
         # Export set cache
-        cursor = conn.execute("SELECT * FROM set_cache")
-        set_cache = [
-            {
-                "set_id": row[0],
-                "name": row[1],
-                "card_count": row[2],
-                "release_date": row[3],
-                "serie_id": row[4],
-                "serie_name": row[5],
-                "cached_at": row[6],
-            }
-            for row in cursor.fetchall()
-        ]
+        cursor = conn.execute("SELECT * FROM set_cache ORDER BY set_id")
+        columns = [desc[0] for desc in cursor.description]
+        set_cache = [dict(zip(columns, row)) for row in cursor.fetchall()]
 
     # Create export data
     export_data = {
         "exported_at": datetime.now().isoformat(),
-        "version": "1.0",
+        "version": "2.0",  # v2 schema
+        "schema_version": 2,
         "cards": cards,
+        "card_names": card_names,
+        "owned_cards": owned_cards,
         "set_cache": set_cache,
     }
 
@@ -1016,14 +1009,18 @@ def export_to_json(output_path: Path) -> dict:
     return {
         "file_path": str(output_path),
         "cards_count": len(cards),
-        "card_cache_count": 0,  # Deprecated - kept for compatibility
+        "card_names_count": len(card_names),
+        "owned_cards_count": len(owned_cards),
         "set_cache_count": len(set_cache),
         "exported_at": export_data["exported_at"],
+        "version": "2.0",
     }
 
 
 def import_from_json(input_path: Path) -> dict:
     """Import collection from JSON file, replacing existing database.
+
+    Supports both v1 and v2 export formats for backward compatibility.
 
     Args:
         input_path: Path to JSON file to import
@@ -1040,62 +1037,118 @@ def import_from_json(input_path: Path) -> dict:
         import_data = json.load(f)
 
     # Validate format
-    if "version" not in import_data or "cards" not in import_data:
-        raise ValueError("Invalid export file format")
+    if "version" not in import_data:
+        raise ValueError("Invalid export file format: missing version field")
+
+    # Detect schema version
+    schema_version = import_data.get("schema_version", 1)
+    if import_data["version"].startswith("2."):
+        schema_version = 2
 
     with get_connection() as conn:
-        # Clear existing data
-        conn.execute("DELETE FROM cards")
-        conn.execute("DELETE FROM set_cache")
+        if schema_version == 2:
+            # v2 format: Import all 4 tables
+            # Clear existing data (must delete in correct order due to foreign keys)
+            conn.execute("DELETE FROM owned_cards")
+            conn.execute("DELETE FROM card_names")
+            conn.execute("DELETE FROM cards")
+            conn.execute("DELETE FROM set_cache")
 
-        # Import cards
-        for card in import_data["cards"]:
-            conn.execute(
-                """
-                INSERT INTO cards 
-                (id, set_id, card_number, tcgdex_id, variant, language, quantity, added_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    card["id"],
-                    card["set_id"],
-                    card["card_number"],
-                    card["tcgdex_id"],
-                    card["variant"],
-                    card["language"],
-                    card["quantity"],
-                    card["added_at"],
-                    card["updated_at"],
-                ),
+            # Import canonical cards
+            for card in import_data.get("cards", []):
+                conn.execute(
+                    """
+                    INSERT INTO cards 
+                    (tcgdex_id, set_id, card_number, name, rarity, types, hp, stage, 
+                     category, image_url, price_eur, price_usd, legal_standard, 
+                     legal_expanded, last_synced)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        card["tcgdex_id"],
+                        card["set_id"],
+                        card["card_number"],
+                        card["name"],
+                        card.get("rarity"),
+                        card.get("types"),
+                        card.get("hp"),
+                        card.get("stage"),
+                        card.get("category"),
+                        card.get("image_url"),
+                        card.get("price_eur"),
+                        card.get("price_usd"),
+                        card.get("legal_standard"),
+                        card.get("legal_expanded"),
+                        card.get("last_synced"),
+                    ),
+                )
+
+            # Import localized card names
+            for card_name in import_data.get("card_names", []):
+                conn.execute(
+                    """
+                    INSERT INTO card_names (tcgdex_id, language, name)
+                    VALUES (?, ?, ?)
+                    """,
+                    (
+                        card_name["tcgdex_id"],
+                        card_name["language"],
+                        card_name["name"],
+                    ),
+                )
+
+            # Import owned cards
+            for owned in import_data.get("owned_cards", []):
+                conn.execute(
+                    """
+                    INSERT INTO owned_cards (id, tcgdex_id, variant, language, quantity, added_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        owned.get("id"),  # May be None for auto-increment
+                        owned["tcgdex_id"],
+                        owned["variant"],
+                        owned["language"],
+                        owned["quantity"],
+                        owned["added_at"],
+                    ),
+                )
+
+            # Import set cache
+            for set_info in import_data.get("set_cache", []):
+                conn.execute(
+                    """
+                    INSERT INTO set_cache
+                    (set_id, name, card_count, release_date, serie_id, serie_name, cached_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        set_info["set_id"],
+                        set_info["name"],
+                        set_info.get("card_count"),
+                        set_info.get("release_date"),
+                        set_info.get("serie_id"),
+                        set_info.get("serie_name"),
+                        set_info.get("cached_at"),
+                    ),
+                )
+
+            conn.commit()
+
+            return {
+                "cards_count": len(import_data.get("cards", [])),
+                "card_names_count": len(import_data.get("card_names", [])),
+                "owned_cards_count": len(import_data.get("owned_cards", [])),
+                "set_cache_count": len(import_data.get("set_cache", [])),
+                "exported_at": import_data.get("exported_at"),
+                "version": import_data["version"],
+            }
+
+        else:
+            # v1 format: Not supported in v2 database
+            # User should use migration script instead
+            raise ValueError(
+                "Cannot import v1 format into v2 database. "
+                "Please use 'pkm migrate' to upgrade your database first, "
+                "or export from a v2 database."
             )
-
-        # Skip card_cache import - it's deprecated (kept for compatibility with old exports)
-        # (card_cache has been removed)
-
-        # Import set cache
-        for set_info in import_data.get("set_cache", []):
-            conn.execute(
-                """
-                INSERT INTO set_cache
-                (set_id, name, card_count, release_date, serie_id, serie_name, cached_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    set_info["set_id"],
-                    set_info["name"],
-                    set_info["card_count"],
-                    set_info["release_date"],
-                    set_info["serie_id"],
-                    set_info["serie_name"],
-                    set_info["cached_at"],
-                ),
-            )
-
-        conn.commit()
-
-    return {
-        "cards_count": len(import_data["cards"]),
-        "card_cache_count": 0,  # Deprecated - kept for compatibility
-        "set_cache_count": len(import_data.get("set_cache", [])),
-        "exported_at": import_data.get("exported_at"),
-    }
