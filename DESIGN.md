@@ -38,8 +38,9 @@ curl -fsSL https://raw.githubusercontent.com/cloonix/pkmdex/main/install.sh | ba
 - Executable: `~/.local/bin/pkm`
 - Application: `~/.local/share/pkmdex-bin/`
 - Config: `~/.config/pkmdex/config.json` (Linux/macOS)
-- Database: `~/.local/share/pkmdex/pokedex.db` (default, configurable)
-- Backups: `~/.local/share/pkmdex/backups/` (default, configurable)
+- Database: `~/.pkmdex/pokedex.db` (default, configurable)
+- Backups: `~/.pkmdex/backups/` (default, configurable)
+- Raw JSON: `~/.pkmdex/raw_data/cards/` (language-specific card data)
 
 ### Project Structure
 
@@ -108,30 +109,8 @@ CREATE TABLE cards (
 CREATE INDEX idx_set_id ON cards(set_id);
 CREATE INDEX idx_tcgdex_id ON cards(tcgdex_id);
 CREATE INDEX idx_language ON cards(language);
+CREATE INDEX idx_cards_lookup ON cards(tcgdex_id, language); -- Composite index for analyzer
 ```
-
-#### `card_cache`
-Caches card metadata from TCGdex API to reduce API calls.
-
-```sql
-CREATE TABLE card_cache (
-    tcgdex_id TEXT PRIMARY KEY,     -- Full TCGdex ID (e.g., "me01-136")
-    name TEXT NOT NULL,             -- Card name in requested language
-    set_name TEXT,                  -- Set name
-    rarity TEXT,                    -- Card rarity (always in English)
-    types TEXT,                     -- JSON array of types
-    hp INTEGER,                     -- Hit points (Pokemon only)
-    available_variants TEXT NOT NULL, -- JSON object of available variants
-    image_url TEXT,                 -- High quality PNG URL
-    cached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-```
-
-**Note:** Rarity is always fetched from the English API to maintain consistency, even when adding cards in other languages.
-
-**Image URLs:** Stored as high-quality PNG format:
-- Format: `https://assets.tcgdex.net/{lang}/{serie}/{set}/{card}/high.png`
-- Example: `https://assets.tcgdex.net/en/swsh/swsh3/136/high.png`
 
 #### `set_cache`
 Caches set information to help users discover set IDs.
@@ -156,10 +135,15 @@ Location: `~/.config/pkmdex/config.json` (Linux/macOS) or `%APPDATA%/pkmdex/conf
 
 ```json
 {
-  "db_path": "/path/to/pokedex.db",
-  "backups_path": "/path/to/backups"
+  "db_path": "/home/user/.pkmdex/pokedex.db",
+  "backups_path": "/home/user/.pkmdex/backups"
 }
 ```
+
+**Note:** Raw JSON data is automatically stored in `{db_path.parent}/raw_data/cards/` with language-specific naming:
+- English: `me01-136.json` (for analysis)
+- German: `me01-136.de.json` (for display)
+- French: `me01-136.fr.json` (for display)
 
 ### Configuration Commands
 
@@ -267,12 +251,12 @@ Examples:
 **Behavior:**
 1. Parse input format (validates language code)
 2. Query TCGdex API for card info in specified language
-3. Fetch rarity from English API (for consistency)
-4. Validate card exists
-5. Check if variant is available for this card
-6. If card+variant+language exists in DB: increment quantity
-7. If new: insert with quantity=1
-8. Cache card metadata with high-quality PNG image URL
+3. Validate card exists
+4. Check if variant is available for this card (optional with --force)
+5. If card+variant+language exists in DB: increment quantity
+6. If new: insert with quantity=1
+7. Save language-specific raw JSON file (e.g., `me01-136.de.json`)
+8. Also save English raw JSON file (e.g., `me01-136.json`) for analysis
 9. Display success message with card name and image URL
 
 #### `rm` - Remove cards from collection
@@ -447,8 +431,8 @@ Examples:
 {
   "version": "1.0",
   "exported_at": "2026-01-25T14:30:00.123456",
+  "version": "1.0",
   "cards": [...],
-  "card_cache": [...],
   "set_cache": [...]
 }
 ```
@@ -487,33 +471,29 @@ The application uses the official Python SDK from TCGdex.
 - Each language has its own SDK instance
 - Singleton pattern prevents duplicate API clients
 
-**Rarity Consistency:**
-For multi-language support, rarities are always fetched from the English API to maintain consistency:
+**Dual JSON Storage Strategy:**
+When adding a card in any language:
+1. Fetch card data in the requested language (e.g., German)
+2. Save language-specific JSON: `me01-136.de.json` (for localized display)
+3. Fetch English version and save: `me01-136.json` (for consistent analysis)
 
-```python
-# When fetching a German card
-card_data = await de_api.sdk.card.get(tcgdex_id)
-en_card_data = await en_api.sdk.card.get(tcgdex_id)  # Fetch rarity from English
-card_data.rarity = en_card_data.rarity  # Replace with English rarity
-```
-
-This ensures rarities display consistently as "Common", "Rare", etc., regardless of the card's language.
+This ensures:
+- Display shows correct localized names ("Bisasam" for German)
+- Analysis uses consistent English data for filtering
 
 ### Caching Strategy
 
-**Card Cache:**
-- Cache metadata when first added
-- Cache includes: name, rarity, types, HP, variants, image URL
+**Raw JSON Files:**
+- Language-specific files saved when adding cards
+- Format: `{tcgdex_id}.{lang}.json` (e.g., `me01-136.de.json`)
+- English always saved: `{tcgdex_id}.json` (for analysis)
 - No expiration (card data doesn't change)
+- Auto-fallback: Load language-specific first, fall back to English
 
-**Set Cache:**
-- Cache on first `sets` command
-- Could add expiration for new set releases (future enhancement)
-
-**Image URLs:**
-- Stored as high-quality PNG: `{base_url}/high.png`
-- Format ensures consistent image quality
-- URLs don't expire
+**Set Cache (Database Table):**
+- Cached in `set_cache` table
+- Refreshed on first `sets` command or when >24 hours old
+- Enables fast set search without API calls
 
 ### Error Handling
 
@@ -552,7 +532,8 @@ class OwnedCard:
 ```
 
 #### `CardInfo`
-Cached card metadata from API.
+In-memory card information from TCGdex API.
+**Note:** Not stored in database - data persisted as language-specific JSON files.
 
 ```python
 @dataclass
@@ -565,7 +546,7 @@ class CardInfo:
     hp: Optional[int]
     available_variants: CardVariants
     image_url: Optional[str]  # High quality PNG
-    cached_at: datetime
+    cached_at: datetime       # Timestamp when fetched from API
 ```
 
 #### `CardVariants`
@@ -581,7 +562,7 @@ class CardVariants:
 ```
 
 #### `SetInfo`
-Cached set information.
+Set information (cached in `set_cache` database table).
 
 ```python
 @dataclass
@@ -592,7 +573,7 @@ class SetInfo:
     release_date: Optional[str]
     serie_id: Optional[str]
     serie_name: Optional[str]
-    cached_at: datetime
+    cached_at: datetime       # Timestamp when fetched from API
 ```
 
 #### `Config`
@@ -653,7 +634,8 @@ me01-136, normal, en, quantity=1
 - ✅ Automatic updates
 - ✅ High-quality image URLs
 - ✅ English rarity consistency
-- ✅ Full test coverage (24 tests)
+- ✅ Full test coverage (43 tests)
+- ✅ Collection analysis and statistics
 
 ### 🔮 Future Enhancements
 
@@ -673,6 +655,7 @@ me01-136, normal, en, quantity=1
 **Unit Tests:**
 - `test_db.py` - Database operations (13 tests)
 - `test_config.py` - Configuration management (11 tests)
+- `test_analyzer.py` - Collection analysis and statistics (20 tests)
 
 **Test Approach:**
 - Temporary databases for isolation
@@ -723,6 +706,7 @@ curl -fsSL https://raw.githubusercontent.com/cloonix/pkmdex/main/install.sh | ba
 - Config preserved across updates
 
 **Breaking Changes:**
-- v0.3.0: Default database location changed from `~/.pkmdex/` to `~/.local/share/pkmdex/`
-  - Use `pkm setup --path ~/.pkmdex` to point to old location
-  - Or export/import to migrate data
+- v0.3.0: Removed `card_cache` and `localized_names` database tables
+  - Now using language-specific JSON files for card data
+  - Export/import functionality remains compatible
+  - No action needed - schema auto-migrates on startup
