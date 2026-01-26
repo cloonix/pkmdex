@@ -119,15 +119,24 @@ def test_analysis_filter_with_values():
 
 
 def test_load_card_with_ownership_success(temp_db, temp_data_dir):
-    """Test loading card with ownership info."""
-    # Add card to database
-    db.add_card_variant("me01-001", "normal", "de", 2)
-    db.add_card_variant("me01-001", "reverse", "de", 1)
+    """Test loading card with ownership info (v2 API)."""
+    # Setup card in database (v2 schema)
+    db.upsert_card(
+        tcgdex_id="me01-001",
+        name="Bulbasaur",
+        set_id="me01",
+        card_number="001",
+        stage="Basic",
+        types='["Grass"]',
+        hp=60,
+        category="Pokemon",
+        rarity="Common",
+    )
+    db.upsert_card_name("me01-001", "de", "Bisasam")
 
-    # Create raw JSON file
-    card_data = create_mock_card_data("me01-001", "Bulbasaur", "Basic", ["Grass"], 60)
-    json_path = temp_data_dir / "me01-001.json"
-    json_path.write_text(json.dumps(card_data))
+    # Add ownership
+    db.add_owned_card("me01-001", "normal", "de", 2)
+    db.add_owned_card("me01-001", "reverse", "de", 1)
 
     # Load card with ownership
     result = analyzer.load_card_with_ownership("me01-001", "de")
@@ -142,28 +151,32 @@ def test_load_card_with_ownership_success(temp_db, temp_data_dir):
     assert card.hp == 60
     assert card.quantity == 3  # 2 normal + 1 reverse
     assert set(card.variants) == {"normal", "reverse"}
-    # Check raw_data is also returned
+    # Check raw_data is also returned (now from database)
     assert raw_data is not None
     assert raw_data["name"] == "Bulbasaur"
 
 
 def test_load_card_with_ownership_no_raw_json(temp_db, temp_data_dir):
-    """Test loading card when raw JSON is missing."""
-    # Add card to database
-    db.add_card_variant("me01-001", "normal", "de", 1)
+    """Test loading card when card data is missing from database (v2 API)."""
+    # Add ownership but no card data
+    db.add_owned_card("me01-001", "normal", "de", 1)
 
-    # Don't create raw JSON file
+    # Should return None because card data not in database
     result = analyzer.load_card_with_ownership("me01-001", "de")
 
     assert result is None
 
 
 def test_load_card_with_ownership_not_owned(temp_db, temp_data_dir):
-    """Test loading card that is not in the collection."""
-    # Create raw JSON file but don't add to database
-    card_data = create_mock_card_data("me01-001", "Bulbasaur")
-    json_path = temp_data_dir / "me01-001.json"
-    json_path.write_text(json.dumps(card_data))
+    """Test loading card that is not in the collection (v2 API)."""
+    # Create card data but don't add ownership
+    db.upsert_card(
+        tcgdex_id="me01-001",
+        name="Bulbasaur",
+        set_id="me01",
+        card_number="001",
+    )
+    db.upsert_card_name("me01-001", "de", "Bisasam")
 
     result = analyzer.load_card_with_ownership("me01-001", "de")
 
@@ -171,16 +184,22 @@ def test_load_card_with_ownership_not_owned(temp_db, temp_data_dir):
 
 
 def test_load_card_with_ownership_null_types(temp_db, temp_data_dir):
-    """Test loading card with null types (Trainer/Energy cards)."""
-    # Add card to database
-    db.add_card_variant("me01-100", "normal", "de", 1)
-
-    # Create raw JSON file with null types
-    card_data = create_mock_card_data(
-        "me01-100", "Professor Oak", stage=None, types=[], category="Trainer"
+    """Test loading card with null types (Trainer/Energy cards) (v2 API)."""
+    # Setup trainer card in database
+    db.upsert_card(
+        tcgdex_id="me01-100",
+        name="Professor Oak",
+        set_id="me01",
+        card_number="100",
+        stage=None,
+        types="[]",  # Empty array for trainers
+        category="Trainer",
+        rarity="Uncommon",
     )
-    json_path = temp_data_dir / "me01-100.json"
-    json_path.write_text(json.dumps(card_data))
+    db.upsert_card_name("me01-100", "de", "Professor Eich")
+
+    # Add ownership
+    db.add_owned_card("me01-100", "normal", "de", 1)
 
     result = analyzer.load_card_with_ownership("me01-100", "de")
 
@@ -192,16 +211,20 @@ def test_load_card_with_ownership_null_types(temp_db, temp_data_dir):
 
 
 def test_analyze_collection_no_filters(temp_db, temp_data_dir):
-    """Test analyze collection with no filters."""
-    # Add multiple cards
-    db.add_card_variant("me01-001", "normal", "de", 1)
-    db.add_card_variant("me01-002", "normal", "de", 1)
+    """Test analyze collection with no filters (v2 API)."""
+    # Setup cards in database
+    db.upsert_card(
+        "me01-001", "Bulbasaur", "me01", "001", stage="Basic", types='["Grass"]'
+    )
+    db.upsert_card(
+        "me01-002", "Ivysaur", "me01", "002", stage="Stage1", types='["Grass"]'
+    )
+    db.upsert_card_name("me01-001", "de", "Bisasam")
+    db.upsert_card_name("me01-002", "de", "Bisaknosp")
 
-    # Create raw JSON files
-    for i, name in enumerate(["Bulbasaur", "Ivysaur"], 1):
-        card_data = create_mock_card_data(f"me01-00{i}", name)
-        json_path = temp_data_dir / f"me01-00{i}.json"
-        json_path.write_text(json.dumps(card_data))
+    # Add ownership
+    db.add_owned_card("me01-001", "normal", "de", 1)
+    db.add_owned_card("me01-002", "normal", "de", 1)
 
     # Analyze with no filters
     results = analyzer.analyze_collection(AnalysisFilter())
@@ -211,17 +234,20 @@ def test_analyze_collection_no_filters(temp_db, temp_data_dir):
 
 
 def test_analyze_collection_stage_filter(temp_db, temp_data_dir):
-    """Test analyze collection with stage filter."""
-    # Add cards
-    db.add_card_variant("me01-001", "normal", "de", 1)
-    db.add_card_variant("me01-002", "normal", "de", 1)
+    """Test analyze collection with stage filter (v2 API)."""
+    # Setup cards with different stages
+    db.upsert_card(
+        "me01-001", "Bulbasaur", "me01", "001", stage="Basic", types='["Grass"]'
+    )
+    db.upsert_card(
+        "me01-002", "Ivysaur", "me01", "002", stage="Stage1", types='["Grass"]'
+    )
+    db.upsert_card_name("me01-001", "de", "Bisasam")
+    db.upsert_card_name("me01-002", "de", "Bisaknosp")
 
-    # Create raw JSON files with different stages
-    card1 = create_mock_card_data("me01-001", "Bulbasaur", stage="Basic")
-    card2 = create_mock_card_data("me01-002", "Ivysaur", stage="Stage1")
-
-    (temp_data_dir / "me01-001.json").write_text(json.dumps(card1))
-    (temp_data_dir / "me01-002.json").write_text(json.dumps(card2))
+    # Add ownership
+    db.add_owned_card("me01-001", "normal", "de", 1)
+    db.add_owned_card("me01-002", "normal", "de", 1)
 
     # Filter by Stage1
     results = analyzer.analyze_collection(AnalysisFilter(stage="Stage1"))
@@ -232,17 +258,20 @@ def test_analyze_collection_stage_filter(temp_db, temp_data_dir):
 
 
 def test_analyze_collection_type_filter(temp_db, temp_data_dir):
-    """Test analyze collection with type filter."""
-    # Add cards
-    db.add_card_variant("me01-001", "normal", "de", 1)
-    db.add_card_variant("me01-002", "normal", "de", 1)
+    """Test analyze collection with type filter (v2 API)."""
+    # Setup cards with different types
+    db.upsert_card(
+        "me01-001", "Charmander", "me01", "001", stage="Basic", types='["Fire"]'
+    )
+    db.upsert_card(
+        "me01-002", "Squirtle", "me01", "002", stage="Basic", types='["Water"]'
+    )
+    db.upsert_card_name("me01-001", "de", "Glumanda")
+    db.upsert_card_name("me01-002", "de", "Schiggy")
 
-    # Create raw JSON files with different types
-    card1 = create_mock_card_data("me01-001", "Charmander", types=["Fire"])
-    card2 = create_mock_card_data("me01-002", "Squirtle", types=["Water"])
-
-    (temp_data_dir / "me01-001.json").write_text(json.dumps(card1))
-    (temp_data_dir / "me01-002.json").write_text(json.dumps(card2))
+    # Add ownership
+    db.add_owned_card("me01-001", "normal", "de", 1)
+    db.add_owned_card("me01-002", "normal", "de", 1)
 
     # Filter by Fire type
     results = analyzer.analyze_collection(AnalysisFilter(type="Fire"))
@@ -253,17 +282,16 @@ def test_analyze_collection_type_filter(temp_db, temp_data_dir):
 
 
 def test_analyze_collection_rarity_filter(temp_db, temp_data_dir):
-    """Test analyze collection with rarity filter."""
-    # Add cards
-    db.add_card_variant("me01-001", "normal", "de", 1)
-    db.add_card_variant("me01-002", "normal", "de", 1)
+    """Test analyze collection with rarity filter (v2 API)."""
+    # Setup cards with different rarities
+    db.upsert_card("me01-001", "Common Card", "me01", "001", rarity="Common")
+    db.upsert_card("me01-002", "Rare Card", "me01", "002", rarity="Rare")
+    db.upsert_card_name("me01-001", "de", "Gewöhnliche Karte")
+    db.upsert_card_name("me01-002", "de", "Seltene Karte")
 
-    # Create raw JSON files with different rarities
-    card1 = create_mock_card_data("me01-001", "Common Card", rarity="Common")
-    card2 = create_mock_card_data("me01-002", "Rare Card", rarity="Rare")
-
-    (temp_data_dir / "me01-001.json").write_text(json.dumps(card1))
-    (temp_data_dir / "me01-002.json").write_text(json.dumps(card2))
+    # Add ownership
+    db.add_owned_card("me01-001", "normal", "de", 1)
+    db.add_owned_card("me01-002", "normal", "de", 1)
 
     # Filter by Rare
     results = analyzer.analyze_collection(AnalysisFilter(rarity="Rare"))
@@ -274,20 +302,19 @@ def test_analyze_collection_rarity_filter(temp_db, temp_data_dir):
 
 
 def test_analyze_collection_hp_filter(temp_db, temp_data_dir):
-    """Test analyze collection with HP filters."""
-    # Add cards
-    db.add_card_variant("me01-001", "normal", "de", 1)
-    db.add_card_variant("me01-002", "normal", "de", 1)
-    db.add_card_variant("me01-003", "normal", "de", 1)
+    """Test analyze collection with HP filters (v2 API)."""
+    # Setup cards with different HP values
+    db.upsert_card("me01-001", "Low HP", "me01", "001", hp=50)
+    db.upsert_card("me01-002", "Mid HP", "me01", "002", hp=100)
+    db.upsert_card("me01-003", "High HP", "me01", "003", hp=150)
+    db.upsert_card_name("me01-001", "de", "Niedrige KP")
+    db.upsert_card_name("me01-002", "de", "Mittlere KP")
+    db.upsert_card_name("me01-003", "de", "Hohe KP")
 
-    # Create raw JSON files with different HP values
-    card1 = create_mock_card_data("me01-001", "Low HP", hp=50)
-    card2 = create_mock_card_data("me01-002", "Mid HP", hp=100)
-    card3 = create_mock_card_data("me01-003", "High HP", hp=150)
-
-    (temp_data_dir / "me01-001.json").write_text(json.dumps(card1))
-    (temp_data_dir / "me01-002.json").write_text(json.dumps(card2))
-    (temp_data_dir / "me01-003.json").write_text(json.dumps(card3))
+    # Add ownership
+    db.add_owned_card("me01-001", "normal", "de", 1)
+    db.add_owned_card("me01-002", "normal", "de", 1)
+    db.add_owned_card("me01-003", "normal", "de", 1)
 
     # Filter by HP range
     results = analyzer.analyze_collection(AnalysisFilter(hp_min=80, hp_max=120))
@@ -298,19 +325,26 @@ def test_analyze_collection_hp_filter(temp_db, temp_data_dir):
 
 
 def test_analyze_collection_category_filter(temp_db, temp_data_dir):
-    """Test analyze collection with category filter."""
-    # Add cards
-    db.add_card_variant("me01-001", "normal", "de", 1)
-    db.add_card_variant("me01-100", "normal", "de", 1)
-
-    # Create raw JSON files with different categories
-    card1 = create_mock_card_data("me01-001", "Pikachu", category="Pokemon")
-    card2 = create_mock_card_data(
-        "me01-100", "Professor Oak", category="Trainer", stage=None, types=[]
+    """Test analyze collection with category filter (v2 API)."""
+    # Setup cards with different categories
+    db.upsert_card(
+        "me01-001", "Pikachu", "me01", "001", category="Pokemon", types='["Electric"]'
     )
+    db.upsert_card(
+        "me01-100",
+        "Professor Oak",
+        "me01",
+        "100",
+        category="Trainer",
+        stage=None,
+        types="[]",
+    )
+    db.upsert_card_name("me01-001", "de", "Pikachu")
+    db.upsert_card_name("me01-100", "de", "Professor Eich")
 
-    (temp_data_dir / "me01-001.json").write_text(json.dumps(card1))
-    (temp_data_dir / "me01-100.json").write_text(json.dumps(card2))
+    # Add ownership
+    db.add_owned_card("me01-001", "normal", "de", 1)
+    db.add_owned_card("me01-100", "normal", "de", 1)
 
     # Filter by Trainer category
     results = analyzer.analyze_collection(AnalysisFilter(category="Trainer"))
@@ -321,14 +355,15 @@ def test_analyze_collection_category_filter(temp_db, temp_data_dir):
 
 
 def test_analyze_collection_language_filter(temp_db, temp_data_dir):
-    """Test analyze collection with language filter."""
-    # Add cards in different languages
-    db.add_card_variant("me01-001", "normal", "de", 1)
-    db.add_card_variant("me01-001", "normal", "en", 1)
+    """Test analyze collection with language filter (v2 API)."""
+    # Setup card with multiple language ownership
+    db.upsert_card("me01-001", "Pikachu", "me01", "001", types='["Electric"]')
+    db.upsert_card_name("me01-001", "de", "Pikachu")
+    db.upsert_card_name("me01-001", "en", "Pikachu")
 
-    # Create raw JSON file
-    card_data = create_mock_card_data("me01-001", "Pikachu")
-    (temp_data_dir / "me01-001.json").write_text(json.dumps(card_data))
+    # Add cards in different languages
+    db.add_owned_card("me01-001", "normal", "de", 1)
+    db.add_owned_card("me01-001", "normal", "en", 1)
 
     # Filter by German language
     results = analyzer.analyze_collection(AnalysisFilter(language="de"))
@@ -338,17 +373,16 @@ def test_analyze_collection_language_filter(temp_db, temp_data_dir):
 
 
 def test_analyze_collection_set_filter(temp_db, temp_data_dir):
-    """Test analyze collection with set ID filter."""
+    """Test analyze collection with set ID filter (v2 API)."""
+    # Setup cards from different sets
+    db.upsert_card("me01-001", "Card 1", "me01", "001")
+    db.upsert_card("swsh1-001", "Card 2", "swsh1", "001")
+    db.upsert_card_name("me01-001", "de", "Karte 1")
+    db.upsert_card_name("swsh1-001", "de", "Karte 2")
+
     # Add cards from different sets
-    db.add_card_variant("me01-001", "normal", "de", 1)
-    db.add_card_variant("swsh1-001", "normal", "de", 1)
-
-    # Create raw JSON files
-    card1 = create_mock_card_data("me01-001", "Card 1")
-    card2 = create_mock_card_data("swsh1-001", "Card 2")
-
-    (temp_data_dir / "me01-001.json").write_text(json.dumps(card1))
-    (temp_data_dir / "swsh1-001.json").write_text(json.dumps(card2))
+    db.add_owned_card("me01-001", "normal", "de", 1)
+    db.add_owned_card("swsh1-001", "normal", "de", 1)
 
     # Filter by set
     results = analyzer.analyze_collection(AnalysisFilter(set_id="me01"))
@@ -358,26 +392,31 @@ def test_analyze_collection_set_filter(temp_db, temp_data_dir):
 
 
 def test_analyze_collection_multiple_filters(temp_db, temp_data_dir):
-    """Test analyze collection with multiple filters combined."""
-    # Add cards
-    db.add_card_variant("me01-001", "normal", "de", 1)
-    db.add_card_variant("me01-002", "normal", "de", 1)
-    db.add_card_variant("me01-003", "normal", "de", 1)
+    """Test analyze collection with multiple filters combined (v2 API)."""
+    # Setup cards with different attributes
+    db.upsert_card(
+        "me01-001", "Match", "me01", "001", stage="Stage1", types='["Fire"]', hp=90
+    )
+    db.upsert_card(
+        "me01-002", "No Match 1", "me01", "002", stage="Basic", types='["Fire"]', hp=90
+    )
+    db.upsert_card(
+        "me01-003",
+        "No Match 2",
+        "me01",
+        "003",
+        stage="Stage1",
+        types='["Water"]',
+        hp=90,
+    )
+    db.upsert_card_name("me01-001", "de", "Treffer")
+    db.upsert_card_name("me01-002", "de", "Kein Treffer 1")
+    db.upsert_card_name("me01-003", "de", "Kein Treffer 2")
 
-    # Create raw JSON files
-    card1 = create_mock_card_data(
-        "me01-001", "Match", stage="Stage1", types=["Fire"], hp=90
-    )
-    card2 = create_mock_card_data(
-        "me01-002", "No Match 1", stage="Basic", types=["Fire"], hp=90
-    )
-    card3 = create_mock_card_data(
-        "me01-003", "No Match 2", stage="Stage1", types=["Water"], hp=90
-    )
-
-    (temp_data_dir / "me01-001.json").write_text(json.dumps(card1))
-    (temp_data_dir / "me01-002.json").write_text(json.dumps(card2))
-    (temp_data_dir / "me01-003.json").write_text(json.dumps(card3))
+    # Add ownership
+    db.add_owned_card("me01-001", "normal", "de", 1)
+    db.add_owned_card("me01-002", "normal", "de", 1)
+    db.add_owned_card("me01-003", "normal", "de", 1)
 
     # Filter by stage AND type
     results = analyzer.analyze_collection(AnalysisFilter(stage="Stage1", type="Fire"))
@@ -401,21 +440,20 @@ def test_get_collection_statistics_empty():
 
 
 def test_get_collection_statistics_basic(temp_db, temp_data_dir):
-    """Test statistics with basic collection."""
-    # Add cards
-    db.add_card_variant("me01-001", "normal", "de", 2)
-    db.add_card_variant("me01-002", "normal", "de", 1)
-
-    # Create raw JSON files
-    card1 = create_mock_card_data(
-        "me01-001", "Card 1", stage="Basic", types=["Fire"], hp=60
+    """Test statistics with basic collection (v2 API)."""
+    # Setup cards
+    db.upsert_card(
+        "me01-001", "Card 1", "me01", "001", stage="Basic", types='["Fire"]', hp=60
     )
-    card2 = create_mock_card_data(
-        "me01-002", "Card 2", stage="Stage1", types=["Water"], hp=80
+    db.upsert_card(
+        "me01-002", "Card 2", "me01", "002", stage="Stage1", types='["Water"]', hp=80
     )
+    db.upsert_card_name("me01-001", "de", "Karte 1")
+    db.upsert_card_name("me01-002", "de", "Karte 2")
 
-    (temp_data_dir / "me01-001.json").write_text(json.dumps(card1))
-    (temp_data_dir / "me01-002.json").write_text(json.dumps(card2))
+    # Add ownership
+    db.add_owned_card("me01-001", "normal", "de", 2)
+    db.add_owned_card("me01-002", "normal", "de", 1)
 
     # Get cards and statistics
     cards = analyzer.analyze_collection(AnalysisFilter())
@@ -429,13 +467,13 @@ def test_get_collection_statistics_basic(temp_db, temp_data_dir):
 
 
 def test_get_collection_statistics_multi_type(temp_db, temp_data_dir):
-    """Test statistics with multi-type cards."""
-    # Add card
-    db.add_card_variant("me01-001", "normal", "de", 1)
+    """Test statistics with multi-type cards (v2 API)."""
+    # Setup dual-type card
+    db.upsert_card("me01-001", "Dual Type", "me01", "001", types='["Fire", "Dragon"]')
+    db.upsert_card_name("me01-001", "de", "Doppel-Typ")
 
-    # Create raw JSON file with multiple types
-    card_data = create_mock_card_data("me01-001", "Dual Type", types=["Fire", "Dragon"])
-    (temp_data_dir / "me01-001.json").write_text(json.dumps(card_data))
+    # Add ownership
+    db.add_owned_card("me01-001", "normal", "de", 1)
 
     # Get statistics
     cards = analyzer.analyze_collection(AnalysisFilter())
@@ -446,19 +484,25 @@ def test_get_collection_statistics_multi_type(temp_db, temp_data_dir):
 
 
 def test_get_collection_statistics_null_hp(temp_db, temp_data_dir):
-    """Test statistics with cards that have no HP (Trainers)."""
-    # Add cards
-    db.add_card_variant("me01-001", "normal", "de", 1)
-    db.add_card_variant("me01-100", "normal", "de", 1)
-
-    # Create raw JSON files
-    card1 = create_mock_card_data("me01-001", "Pokemon", hp=60)
-    card2 = create_mock_card_data(
-        "me01-100", "Trainer", category="Trainer", hp=None, stage=None, types=[]
+    """Test statistics with cards that have no HP (Trainers) (v2 API)."""
+    # Setup Pokemon and Trainer
+    db.upsert_card("me01-001", "Pokemon", "me01", "001", category="Pokemon", hp=60)
+    db.upsert_card(
+        "me01-100",
+        "Trainer",
+        "me01",
+        "100",
+        category="Trainer",
+        hp=None,
+        stage=None,
+        types="[]",
     )
+    db.upsert_card_name("me01-001", "de", "Pokemon")
+    db.upsert_card_name("me01-100", "de", "Trainer")
 
-    (temp_data_dir / "me01-001.json").write_text(json.dumps(card1))
-    (temp_data_dir / "me01-100.json").write_text(json.dumps(card2))
+    # Add ownership
+    db.add_owned_card("me01-001", "normal", "de", 1)
+    db.add_owned_card("me01-100", "normal", "de", 1)
 
     # Get statistics
     cards = analyzer.analyze_collection(AnalysisFilter())
@@ -470,16 +514,19 @@ def test_get_collection_statistics_null_hp(temp_db, temp_data_dir):
 
 
 def test_get_collection_statistics_by_set(temp_db, temp_data_dir):
-    """Test statistics grouped by set."""
-    # Add cards from different sets
-    db.add_card_variant("me01-001", "normal", "de", 1)
-    db.add_card_variant("me01-002", "normal", "de", 1)
-    db.add_card_variant("swsh1-001", "normal", "de", 1)
+    """Test statistics grouped by set (v2 API)."""
+    # Setup cards from different sets
+    db.upsert_card("me01-001", "Card me01-001", "me01", "001")
+    db.upsert_card("me01-002", "Card me01-002", "me01", "002")
+    db.upsert_card("swsh1-001", "Card swsh1-001", "swsh1", "001")
+    db.upsert_card_name("me01-001", "de", "Karte me01-001")
+    db.upsert_card_name("me01-002", "de", "Karte me01-002")
+    db.upsert_card_name("swsh1-001", "de", "Karte swsh1-001")
 
-    # Create raw JSON files
-    for tcgdex_id in ["me01-001", "me01-002", "swsh1-001"]:
-        card_data = create_mock_card_data(tcgdex_id, f"Card {tcgdex_id}")
-        (temp_data_dir / f"{tcgdex_id}.json").write_text(json.dumps(card_data))
+    # Add cards from different sets
+    db.add_owned_card("me01-001", "normal", "de", 1)
+    db.add_owned_card("me01-002", "normal", "de", 1)
+    db.add_owned_card("swsh1-001", "normal", "de", 1)
 
     # Get statistics
     cards = analyzer.analyze_collection(AnalysisFilter())
