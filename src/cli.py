@@ -97,6 +97,28 @@ def get_display_name(tcgdex_id: str, language: str) -> str:
     return card_data["name"] if card_data else tcgdex_id
 
 
+def get_current_quantity(tcgdex_id: str, variant: str, language: str) -> int:
+    """Get current quantity of a specific card variant in collection.
+
+    Args:
+        tcgdex_id: Full TCGdex ID
+        variant: Variant name (normal, reverse, holo, firstEdition)
+        language: Language code
+
+    Returns:
+        Current quantity (0 if not owned)
+    """
+    owned_cards = db.get_v2_owned_cards()
+    for card in owned_cards:
+        if (
+            card["tcgdex_id"] == tcgdex_id
+            and card["variant"] == variant
+            and card["language"] == language
+        ):
+            return card["quantity"]
+    return 0
+
+
 async def fetch_card_info(language: str, set_id: str, card_number: str) -> CardInfo:
     """Fetch card from API or cache.
 
@@ -205,16 +227,7 @@ async def handle_add(args: argparse.Namespace) -> int:
             )
 
         # Step 4: Get current quantity before adding
-        current_card = db.get_v2_owned_cards()
-        current_qty = 0
-        for c in current_card:
-            if (
-                c["tcgdex_id"] == tcgdex_id
-                and c["variant"] == variant
-                and c["language"] == language
-            ):
-                current_qty = c["quantity"]
-                break
+        current_qty = get_current_quantity(tcgdex_id, variant, language)
 
         # Step 5: Add to owned_cards table
         db.add_owned_card(tcgdex_id, variant, language, quantity=1)
