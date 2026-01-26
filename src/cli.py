@@ -871,60 +871,6 @@ async def handle_sync(args: argparse.Namespace) -> int:
     return 0
 
 
-async def handle_migrate(args: argparse.Namespace) -> int:
-    """Handle 'migrate' command.
-
-    Args:
-        args: Parsed command-line arguments
-
-    Returns:
-        Exit code (0 for success, 1 for error)
-    """
-    from .migrate_v2 import migrate_v1_to_v2, detect_schema_version
-
-    # Detect current version
-    version = detect_schema_version()
-
-    if version == 0:
-        print("Database is empty - no migration needed")
-        print("Run 'pkm add' to start adding cards")
-        return 0
-    elif version == 2:
-        print("Database already uses v2 schema - no migration needed")
-        return 0
-    elif version == -1:
-        print("Error: Unknown database schema", file=sys.stderr)
-        print("Manual intervention may be required", file=sys.stderr)
-        return 1
-
-    # v1 detected
-    print("Detected v1 schema - migration required")
-
-    if args.dry_run:
-        print("\nDRY RUN MODE - no changes will be made\n")
-
-    # Run migration
-    try:
-        stats = await migrate_v1_to_v2(
-            dry_run=args.dry_run,
-            verbose=args.verbose,
-        )
-
-        if stats.get("status") == "error":
-            print(f"Migration failed: {stats.get('reason')}", file=sys.stderr)
-            return 1
-
-        return 0
-
-    except Exception as e:
-        print(f"Migration failed: {e}", file=sys.stderr)
-        import traceback
-
-        if args.verbose:
-            traceback.print_exc()
-        return 1
-
-
 def handle_setup(args: argparse.Namespace) -> int:
     """Handle 'setup' command.
 
@@ -1378,22 +1324,6 @@ def create_parser() -> argparse.ArgumentParser:
         help="Show price changes after sync",
     )
 
-    # Migrate command
-    migrate_parser = subparsers.add_parser(
-        "migrate", help="Migrate database from v1 to v2 schema"
-    )
-    migrate_parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Show what would be migrated without making changes",
-    )
-    migrate_parser.add_argument(
-        "--verbose",
-        "-v",
-        action="store_true",
-        help="Show detailed progress during migration",
-    )
-
     # Setup command
     setup_parser = subparsers.add_parser(
         "setup", help="Configure database path and settings"
@@ -1492,9 +1422,8 @@ def main() -> None:
     parser = create_parser()
     args = parser.parse_args()
 
-    # Initialize database (skip for migrate command - it handles schema itself)
-    if args.command != "migrate":
-        db.init_database()
+    # Initialize database
+    db.init_database()
 
     if not args.command:
         parser.print_help()
@@ -1517,8 +1446,6 @@ def main() -> None:
         exit_code = handle_stats(args)
     elif args.command == "sync":
         exit_code = asyncio.run(handle_sync(args))
-    elif args.command == "migrate":
-        exit_code = asyncio.run(handle_migrate(args))
     elif args.command == "setup":
         exit_code = handle_setup(args)
     elif args.command == "export":

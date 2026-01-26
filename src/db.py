@@ -640,13 +640,6 @@ def get_v2_collection_stats() -> dict:
         }
 
 
-# === v1 Compatibility Functions - REMOVED ===
-# The v1 schema compatibility functions have been removed as the migration
-# to v2 schema is complete. See git history if needed.
-# Removed: add_card_variant, remove_card_variant, get_owned_cards,
-#           get_owned_card_ids, get_card_ownership, get_collection_stats
-
-
 def remove_all_card_variants(tcgdex_id: str, language: str = "de") -> int:
     """Remove all variants of a card in a specific language (v2 schema).
 
