@@ -307,7 +307,7 @@ async def handle_rm(args: argparse.Namespace) -> int:
 
 
 def handle_list(args: argparse.Namespace) -> int:
-    """Handle 'list' command.
+    """Handle 'list' command (v2 schema).
 
     Args:
         args: Parsed command-line arguments
@@ -342,7 +342,8 @@ def handle_list(args: argparse.Namespace) -> int:
         else:
             set_filter = filter_arg
 
-    owned_cards = db.get_owned_cards(set_filter, language_filter)
+    # Query from v2 schema (includes JOIN with cards and card_names)
+    owned_cards = db.get_v2_owned_cards(set_filter, language_filter)
 
     if not owned_cards:
         if set_filter:
@@ -357,7 +358,7 @@ def handle_list(args: argparse.Namespace) -> int:
     # Group cards by tcgdex_id AND language to show variants together
     cards_by_id_lang: dict[tuple[str, str], list] = {}
     for card in owned_cards:
-        key = (card.tcgdex_id, card.language)
+        key = (card["tcgdex_id"], card["language"])
         if key not in cards_by_id_lang:
             cards_by_id_lang[key] = []
         cards_by_id_lang[key].append(card)
@@ -373,20 +374,18 @@ def handle_list(args: argparse.Namespace) -> int:
 
     # Print each card
     for (tcgdex_id, language), card_variants in sorted(cards_by_id_lang.items()):
-        # Load language-specific raw JSON (auto-fallback to English if not found)
-        raw_data = config.load_raw_card_data(tcgdex_id, language)
-
-        # Get name and rarity from raw JSON
-        name = raw_data.get("name", "Unknown") if raw_data else "Unknown"
-        rarity = raw_data.get("rarity", "") if raw_data else ""
+        # Data already loaded from DB query (no JSON file needed!)
+        first_card = card_variants[0]
+        name = first_card["display_name"]  # Localized name from card_names table
+        rarity = first_card["rarity"] or ""
 
         # Build variants string with quantities
         variant_strs = []
         card_total_qty = 0
-        for card in sorted(card_variants, key=lambda c: c.variant):
-            variant_strs.append(f"{card.variant}({card.quantity})")
-            card_total_qty += card.quantity
-            total_quantity += card.quantity
+        for card in sorted(card_variants, key=lambda c: c["variant"]):
+            variant_strs.append(f"{card['variant']}({card['quantity']})")
+            card_total_qty += card["quantity"]
+            total_quantity += card["quantity"]
 
         variants_display = ", ".join(variant_strs)
 
@@ -394,11 +393,8 @@ def handle_list(args: argparse.Namespace) -> int:
         if len(name) > 24:
             name = name[:21] + "..."
 
-        # Get language from first variant
-        lang = card_variants[0].language
-
         print(
-            f"{card_variants[0].set_id:<8} {card_variants[0].card_number:<6} {lang:<5} {name:<25} {card_total_qty:<5} {rarity:<15} {variants_display}"
+            f"{first_card['set_id']:<8} {first_card['card_number']:<6} {language:<5} {name:<25} {card_total_qty:<5} {rarity:<15} {variants_display}"
         )
         total_unique += 1
 
