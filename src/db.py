@@ -493,6 +493,116 @@ def get_owned_tcgdex_ids() -> list[str]:
         return [row[0] for row in cursor.fetchall()]
 
 
+def get_v2_collection_stats() -> dict:
+    """Get collection statistics (v2 schema).
+
+    Returns:
+        Dict with various statistics about the collection
+    """
+    with get_connection() as conn:
+        # Total unique cards (count distinct tcgdex_id + language)
+        cursor = conn.execute(
+            "SELECT COUNT(DISTINCT tcgdex_id || '-' || language) FROM owned_cards"
+        )
+        unique_cards = cursor.fetchone()[0] or 0
+
+        # Total quantity across all cards
+        cursor = conn.execute("SELECT SUM(quantity) FROM owned_cards")
+        total_cards = cursor.fetchone()[0] or 0
+
+        # Sets represented (via JOIN with cards table)
+        cursor = conn.execute(
+            """
+            SELECT COUNT(DISTINCT c.set_id)
+            FROM owned_cards o
+            JOIN cards c ON o.tcgdex_id = c.tcgdex_id
+            """
+        )
+        sets_count = cursor.fetchone()[0] or 0
+
+        # Most collected set
+        cursor = conn.execute(
+            """
+            SELECT c.set_id, SUM(o.quantity) as qty
+            FROM owned_cards o
+            JOIN cards c ON o.tcgdex_id = c.tcgdex_id
+            GROUP BY c.set_id
+            ORDER BY qty DESC
+            LIMIT 1
+            """
+        )
+        row = cursor.fetchone()
+        most_collected_set = row[0] if row else None
+        most_collected_qty = row[1] if row else 0
+
+        # Variant breakdown
+        cursor = conn.execute(
+            """
+            SELECT variant, SUM(quantity) as qty
+            FROM owned_cards
+            GROUP BY variant
+            """
+        )
+        variant_breakdown = {row[0]: row[1] for row in cursor.fetchall()}
+
+        # Rarity breakdown (now available from cards table!)
+        cursor = conn.execute(
+            """
+            SELECT c.rarity, SUM(o.quantity) as qty
+            FROM owned_cards o
+            JOIN cards c ON o.tcgdex_id = c.tcgdex_id
+            WHERE c.rarity IS NOT NULL
+            GROUP BY c.rarity
+            """
+        )
+        rarity_breakdown = {row[0]: row[1] for row in cursor.fetchall()}
+
+        # NEW: Total collection value (from prices in cards table)
+        cursor = conn.execute(
+            """
+            SELECT SUM(c.price_eur * o.quantity) as total_value
+            FROM owned_cards o
+            JOIN cards c ON o.tcgdex_id = c.tcgdex_id
+            WHERE c.price_eur IS NOT NULL
+            """
+        )
+        row = cursor.fetchone()
+        total_value_eur = row[0] if row and row[0] else 0.0
+
+        # NEW: Average card value
+        avg_card_value_eur = total_value_eur / unique_cards if unique_cards > 0 else 0.0
+
+        # NEW: Most valuable card
+        cursor = conn.execute(
+            """
+            SELECT c.tcgdex_id, c.name, c.price_eur
+            FROM cards c
+            JOIN owned_cards o ON c.tcgdex_id = o.tcgdex_id
+            WHERE c.price_eur IS NOT NULL
+            ORDER BY c.price_eur DESC
+            LIMIT 1
+            """
+        )
+        row = cursor.fetchone()
+        most_valuable_card = (
+            {"tcgdex_id": row[0], "name": row[1], "price_eur": row[2]} if row else None
+        )
+
+        return {
+            "unique_cards": unique_cards,
+            "total_cards": total_cards,
+            "sets_count": sets_count,
+            "most_collected_set": most_collected_set,
+            "most_collected_qty": most_collected_qty,
+            "variant_breakdown": variant_breakdown,
+            "rarity_breakdown": rarity_breakdown,
+            # NEW v2 fields:
+            "total_value_eur": total_value_eur,
+            "avg_card_value_eur": avg_card_value_eur,
+            "most_valuable_card": most_valuable_card,
+        }
+
+
 # === v1 Compatibility Functions (Deprecated - Keep for migration) ===
 
 

@@ -601,7 +601,7 @@ async def handle_info(args: argparse.Namespace) -> int:
 
 
 def handle_stats(args: argparse.Namespace) -> int:
-    """Handle 'stats' command.
+    """Handle 'stats' command (v2 schema).
 
     Args:
         args: Parsed command-line arguments
@@ -609,7 +609,7 @@ def handle_stats(args: argparse.Namespace) -> int:
     Returns:
         Exit code (0 for success)
     """
-    stats = db.get_collection_stats()
+    stats = db.get_v2_collection_stats()
 
     if stats["unique_cards"] == 0:
         print("Your collection is empty.")
@@ -625,6 +625,15 @@ def handle_stats(args: argparse.Namespace) -> int:
         print(
             f"Most collected set:     {stats['most_collected_set']} ({stats['most_collected_qty']} cards)"
         )
+
+    # NEW: Collection value
+    if stats["total_value_eur"] > 0:
+        print(f"\nCollection Value")
+        print(f"Total value:            €{stats['total_value_eur']:.2f}")
+        print(f"Average per card:       €{stats['avg_card_value_eur']:.2f}")
+        if stats["most_valuable_card"]:
+            mvc = stats["most_valuable_card"]
+            print(f"Most valuable:          {mvc['name']} (€{mvc['price_eur']:.2f})")
 
     # Variant breakdown
     if stats["variant_breakdown"]:
