@@ -5,7 +5,6 @@ from tcgdexsdk import TCGdex
 from dataclasses import asdict, is_dataclass
 
 from .models import CardInfo, SetInfo
-from . import config
 
 
 class PokedexAPIError(Exception):
@@ -44,46 +43,7 @@ class TCGdexAPI:
             tcgdex_id = f"{set_id}-{card_number}"
             card_data = await self.sdk.card.get(tcgdex_id)
 
-            # Save raw data for current language
-            if is_dataclass(card_data):
-                raw_dict = asdict(card_data)
-
-                # Remove non-serializable SDK reference
-                def remove_sdk(obj):
-                    if isinstance(obj, dict):
-                        obj.pop("sdk", None)
-                        for v in obj.values():
-                            remove_sdk(v)
-                    elif isinstance(obj, list):
-                        for item in obj:
-                            remove_sdk(item)
-
-                remove_sdk(raw_dict)
-                config.save_raw_card_data(tcgdex_id, raw_dict, self.language)
-
-            # Also fetch and save English raw data for analysis (if not already English)
-            if self.language != "en":
-                try:
-                    en_api = get_api("en")
-                    en_card_data = await en_api.sdk.card.get(tcgdex_id)
-
-                    if is_dataclass(en_card_data):
-                        en_raw_dict = asdict(en_card_data)
-
-                        # Remove non-serializable SDK reference
-                        def remove_sdk_en(obj):
-                            if isinstance(obj, dict):
-                                obj.pop("sdk", None)
-                                for v in obj.values():
-                                    remove_sdk_en(v)
-                            elif isinstance(obj, list):
-                                for item in obj:
-                                    remove_sdk_en(item)
-
-                        remove_sdk_en(en_raw_dict)
-                        config.save_raw_card_data(tcgdex_id, en_raw_dict, "en")
-                except:
-                    pass  # If English fetch/save fails, continue anyway
+            # v2: No JSON file saving - all data goes to database via CLI layer
 
             # Fetch rarity from English API if not using English
             if self.language != "en":
@@ -125,46 +85,7 @@ class TCGdexAPI:
         try:
             card_data = await self.sdk.card.get(tcgdex_id)
 
-            # Save raw data for current language
-            if is_dataclass(card_data):
-                raw_dict = asdict(card_data)
-
-                # Remove non-serializable SDK reference
-                def remove_sdk(obj):
-                    if isinstance(obj, dict):
-                        obj.pop("sdk", None)
-                        for v in obj.values():
-                            remove_sdk(v)
-                    elif isinstance(obj, list):
-                        for item in obj:
-                            remove_sdk(item)
-
-                remove_sdk(raw_dict)
-                config.save_raw_card_data(tcgdex_id, raw_dict, self.language)
-
-            # Also fetch and save English raw data for analysis (if not already English)
-            if self.language != "en":
-                try:
-                    en_api = get_api("en")
-                    en_card_data = await en_api.sdk.card.get(tcgdex_id)
-
-                    if is_dataclass(en_card_data):
-                        en_raw_dict = asdict(en_card_data)
-
-                        # Remove non-serializable SDK reference
-                        def remove_sdk_en(obj):
-                            if isinstance(obj, dict):
-                                obj.pop("sdk", None)
-                                for v in obj.values():
-                                    remove_sdk_en(v)
-                            elif isinstance(obj, list):
-                                for item in obj:
-                                    remove_sdk_en(item)
-
-                        remove_sdk_en(en_raw_dict)
-                        config.save_raw_card_data(tcgdex_id, en_raw_dict, "en")
-                except:
-                    pass  # If English fetch/save fails, continue anyway
+            # v2: No JSON file saving - all data goes to database via CLI layer
 
             # Fetch rarity from English API if not using English
             if self.language != "en":

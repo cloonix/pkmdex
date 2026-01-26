@@ -523,29 +523,17 @@ async def handle_info(args: argparse.Namespace) -> int:
 
     # Show raw JSON if requested
     if args.raw:
-        raw_data = config.load_raw_card_data(tcgdex_id)
+        try:
+            # Fetch fresh raw data from API (v2: no JSON file caching)
+            api_client = api.get_api(language)
+            raw_data = await api_client.get_card_raw(set_id, card_number)
 
-        # If raw data doesn't exist, fetch it from English API
-        if not raw_data:
-            try:
-                # Always use English API to fetch raw data for analysis
-                en_api_client = api.get_api("en")
-                await en_api_client.get_card(set_id, card_number)
-                raw_data = config.load_raw_card_data(tcgdex_id)
-            except api.PokedexAPIError as e:
-                print(f"Error fetching card: {e}", file=sys.stderr)
-                return 1
-
-        if raw_data:
             import json
 
             print(json.dumps(raw_data, indent=2, ensure_ascii=False))
             return 0
-        else:
-            print(
-                f"Error: Failed to fetch raw data for {tcgdex_id}",
-                file=sys.stderr,
-            )
+        except api.PokedexAPIError as e:
+            print(f"Error fetching card: {e}", file=sys.stderr)
             return 1
 
     try:
