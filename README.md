@@ -9,7 +9,9 @@ A minimal CLI tool for managing Pokemon TCG card collections in 11 languages usi
 - 🔍 Search for set IDs from physical card names
 - 🎴 Manage different card variants (normal, reverse, holo, firstEdition)
 - 💾 Local SQLite database with configurable location
+- 💰 Price tracking (EUR/USD) with automatic sync
 - 📤 Export/import for backup and migration
+- 🔄 Smart sync to update prices and card data
 - 🚀 Fast, typing-friendly CLI interface
 
 ## Quick Start
@@ -98,6 +100,15 @@ pkm analyze --stats              # Show collection statistics
 # View statistics
 pkm stats
 
+# Sync card data (prices, legality) from API
+pkm sync                         # Sync all cards
+pkm sync --stale 7               # Only sync cards older than 7 days
+pkm sync --show-changes          # Show price changes after sync
+
+# Migrate from v1 to v2 schema (if upgrading)
+pkm migrate --dry-run            # Preview migration
+pkm migrate --verbose            # Run migration with detailed output
+
 # Export/import collection
 pkm export                       # Exports to backups directory
 pkm export -o backup.json        # Custom export path
@@ -143,7 +154,8 @@ pkm <command> <lang>:<set_id>:<card_number>[:<variant>]
 | `info` | Get card information | `pkm info de:me01:136` or `pkm info de:me01:136 --raw` |
 | `analyze` | Analyze collection with filters | `pkm analyze --stage Stage1` or `pkm analyze --stats` |
 | `stats` | Show collection statistics | `pkm stats` |
-| `cache` | Manage API cache | `pkm cache` or `pkm cache --refresh` |
+| `sync` | Refresh card data from API | `pkm sync` or `pkm sync --stale 7` |
+| `migrate` | Migrate v1 database to v2 | `pkm migrate --dry-run` or `pkm migrate --verbose` |
 | `export` | Export collection to JSON | `pkm export` or `pkm export -o backup.json` |
 | `import` | Import collection from JSON | `pkm import backup.json` |
 
@@ -179,107 +191,99 @@ The tool tracks different printing variants:
 - `holo` - Holofoil
 - `firstEdition` - First edition printing
 
-## Cache Management
+## Data Synchronization
 
-The tool automatically caches data to improve performance and reduce API calls:
-
-- **Language-specific JSON files**: Complete card data saved per language when you add cards
-- **Set cache**: Database table storing information about all available sets
-
-### Cache Commands
+The v2 architecture stores all card data in the database. Use the `sync` command to keep prices and legality information up-to-date:
 
 ```bash
-# View cache statistics
-pkm cache
+# Sync all cards in your collection
+pkm sync
 
-# Refresh set cache from API (updates all set information)
-pkm cache --refresh
+# Only sync cards that haven't been updated in 7+ days
+pkm sync --stale 7
 
-# Update JSON files for all owned cards (refetches and saves language-specific data)
-pkm cache --update
-
-# Clear set cache
-pkm cache --clear --type sets    # Clear only set cache
+# Show price changes after sync
+pkm sync --show-changes
 ```
 
-**When to use each option:**
-- `--refresh`: Updates the set cache with latest set information from TCGdex
-- `--update`: Refetches all cards in your collection to update language-specific JSON files
-- `--clear`: Removes set cache (useful before doing a fresh update)
+**What gets synced:**
+- Card prices (EUR/USD from TCGdex API)
+- Tournament legality (Standard/Expanded format)
+- Localized card names
+- Card metadata (HP, types, rarity, etc.)
 
-**When to refresh/update cache:**
-- New Pokemon TCG sets have been released (`--refresh`)
-- Card information appears outdated (`--update`)
-- You want to update JSON files for owned cards (`--update`)
-- The set cache is several weeks old (tool will show a tip if >7 days old)
+**When to sync:**
+- After adding many cards (to fetch latest prices)
+- Periodically to track price changes
+- Before exporting your collection with value data
 
-**Note:** The `sets` command automatically refreshes the set cache if it's older than 24 hours.
+## Database Migration
 
-## Raw JSON Data Storage
-
-The tool automatically saves complete API responses as **JSON files** for every card you fetch - both in English (for analysis) and in the card's native language (for display).
-
-### Storage Strategy
-
-When you add a card, the tool saves:
-1. **Language-specific JSON**: The card data in its native language (e.g., `me01-001.de.json` for German)
-2. **English JSON**: The same card in English for consistent analysis (e.g., `me01-001.json`)
-
-This dual storage provides:
-- **Localized Display**: Shows "Bisasam" for German cards, "Bulbizarre" for French
-- **Consistent Analysis**: Filter by `stage="Stage1"` works for all cards regardless of language
-- **Complete Data**: Names, types, descriptions all in the correct language
-
-### Viewing Raw Data
+If you're upgrading from v1 to v2, use the migration command:
 
 ```bash
-# Display formatted JSON from the API (in card's language)
+# Preview what will be migrated (recommended first step)
+pkm migrate --dry-run --verbose
+
+# Run actual migration
+pkm migrate --verbose
+```
+
+The migration:
+- ✅ Creates automatic backups before changes
+- ✅ Migrates all ownership records from v1 tables
+- ✅ Loads card data from existing JSON files OR fetches from API
+- ✅ Preserves localized names for all languages
+- ✅ Validates migration success
+- ✅ Keeps old tables as `*_v1_backup` for safety
+
+## Viewing Raw Card Data
+
+In v2, card data is stored in the database. To view the complete raw JSON from the TCGdex API:
+
+```bash
+# Fetch and display raw JSON (not stored permanently)
 pkm info de:me01:136 --raw
 
-# For German cards, shows German data:
-# - "name": "Bisasam"
-# - But analysis still uses English JSON internally
+# This will show complete API response including:
+# - Card name, HP, types, attacks, abilities
+# - Rarity, regulation marks, artist info
+# - Pricing data (if available)
+# - All metadata from TCGdex
 
-# Raw data is automatically saved when you:
-# - Add a card: pkm add de:me01:136
-# - Get card info: pkm info de:me01:136
-# - Update cache: pkm cache --update
+# Note: In v2, this fetches fresh from API each time
+# Card metadata (name, HP, types, etc.) is stored in database
+# Use 'pkm sync' to update stored data
 ```
 
-### Where Raw Data is Stored
+### What's Stored in the Database
 
-JSON files are saved in your data directory:
-- **Default location**: `~/.pkmdex/raw_data/cards/`
-- **Custom location**: `<your-custom-path>/raw_data/cards/`
-- **File naming**: 
-  - `{tcgdex_id}.json` - English (e.g., `me01-136.json`)
-  - `{tcgdex_id}.{lang}.json` - Localized (e.g., `me01-136.de.json`)
+The v2 database schema stores:
+- **Cards table**: English card data (name, HP, types, rarity, prices, legality)
+- **Card names table**: Localized names for each language
+- **Owned cards table**: Your ownership records (language, variant, quantity)
 
-You can directly access these files for:
-- Building custom tools
-- Collection analysis (via `pkm analyze`)
-- Data science / statistics
-- Offline reference
-- Debugging API responses
+This provides:
+- **Fast queries**: No file I/O needed for listing or filtering
+- **Efficient storage**: No duplicate JSON files
+- **Easy sync**: Update all cards with one command (`pkm sync`)
 
-**Example:**
+### Migration from v1
+
+If you have v1 JSON files, the migration script will:
+1. Read existing JSON files from `~/.pkmdex/raw_data/cards/`
+2. Import card data into v2 database
+3. Preserve all localized names
+4. Keep old files for backup (you can delete after migration)
+
 ```bash
-# View English data file
-cat ~/.pkmdex/raw_data/cards/me01-136.json
-
-# View German data file
-cat ~/.pkmdex/raw_data/cards/me01-136.de.json
-
-# Pretty-print with jq
-jq . ~/.pkmdex/raw_data/cards/me01-136.de.json
-
-# Query all cards with jq
-jq '.stage' ~/.pkmdex/raw_data/cards/*.json | sort | uniq -c
+# Migrate v1 → v2 (reads JSON files, writes to database)
+pkm migrate --verbose
 ```
 
 ## Collection Analysis
 
-Analyze your collection with powerful filtering using English raw JSON data. This ensures consistent filtering regardless of your UI language.
+Analyze your collection with powerful filtering using database queries. All card data is stored consistently in English for reliable filtering.
 
 ### Available Filters
 
@@ -312,18 +316,9 @@ pkm analyze --language en
 # Set ID
 pkm analyze --set me01
 
-# Regulation mark (for tournament legality)
-pkm analyze --regulation F
-pkm analyze --regulation G
-
-# Artist/Illustrator (partial match, case-insensitive)
-pkm analyze --artist "Ken Sugimori"
-pkm analyze --artist HYOGO
-
 # Combine multiple filters
 pkm analyze --stage Stage1 --type Fire --hp-min 80
-pkm analyze --set me01 --rarity Rare --regulation I
-pkm analyze --artist "Mitsuhiro Arita" --type Psychic
+pkm analyze --set me01 --rarity Rare
 ```
 
 ### Statistics Mode
@@ -348,13 +343,6 @@ pkm analyze --stage Stage1 --type Fire
 
 # High-HP cards (150+)
 pkm analyze --hp-min 150
-
-# All cards from a specific artist
-pkm analyze --artist "Mitsuhiro Arita"
-
-# Tournament-legal cards (regulation F and newer)
-pkm analyze --regulation F
-pkm analyze --regulation G
 
 # Rare cards in German
 pkm analyze --rarity Rare --language de
@@ -407,8 +395,8 @@ By Set:
 
 ### Important Notes
 
-- Analysis uses **English JSON data** automatically saved for consistency
-- Your collection displays **localized names** from language-specific JSON files
+- Analysis uses **database queries** for fast, consistent results
+- Your collection displays **localized names** from the card_names table
 - Filters are case-sensitive (use `Stage1`, not `stage1`)
 - Common stages: `Basic`, `Stage1`, `Stage2`, `VMAX`, `VSTAR`, etc.
 - Common types: `Fire`, `Water`, `Grass`, `Electric`, `Psychic`, `Fighting`, `Darkness`, `Metal`, `Fairy`, `Dragon`, `Colorless`
@@ -477,7 +465,6 @@ pkmdex/
 Default Locations (configurable with 'pkm setup'):
   Database:     ~/.pkmdex/pokedex.db
   Backups:      ~/.pkmdex/backups/
-  Raw JSON:     ~/.pkmdex/raw_data/cards/
   Config:       ~/.config/pkmdex/config.json
 ```
 
@@ -521,18 +508,23 @@ python -m mypy src/
 - ✅ Core CLI commands (add, list, rm)
 - ✅ Set discovery (sets command)
 - ✅ Card information (info command)
-- ✅ Collection statistics (stats command)
+- ✅ Collection statistics with value tracking (stats command)
 - ✅ Export/import functionality
 - ✅ Configurable database location
 - ✅ One-line curl installation
 - ✅ Automatic updates
+- ✅ Price tracking (EUR/USD)
+- ✅ Smart sync for updating card data
+- ✅ v1 to v2 database migration
+- ✅ Collection analysis with filters
 
 ### Future Enhancements
-- Card value tracking
 - Wishlist functionality
-- Collection completion tracking
+- Collection completion tracking per set
 - Web interface
 - Barcode scanning support
+- Trade tracking
+- Custom price alerts
 
 ## License
 
