@@ -14,6 +14,14 @@ class PokedexAPIError(Exception):
     pass
 
 
+# Error message templates for consistent UX
+ERROR_CARD_NOT_FOUND = "Card not found: {id}\nTry 'pkm sets' to browse available sets."
+ERROR_SET_NOT_FOUND = (
+    "Set not found: {set_id}\nTry 'pkm sets' to browse available sets."
+)
+ERROR_API_FAILED = "Failed to fetch {resource} from API: {error}"
+
+
 class TCGdexAPI:
     """Wrapper around TCGdex SDK with German language support."""
 
@@ -83,9 +91,7 @@ class TCGdexAPI:
 
             return CardInfo.from_api_response(card_data)
         except Exception as e:
-            raise PokedexAPIError(
-                f"Set not found: {set_id}\nTry 'pkm sets' to browse available sets."
-            ) from e
+            raise PokedexAPIError(ERROR_SET_NOT_FOUND.format(set_id=set_id)) from e
 
     async def get_card_by_id(self, tcgdex_id: str) -> CardInfo:
         """Fetch card by full TCGdex ID.
@@ -109,9 +115,7 @@ class TCGdexAPI:
 
             return CardInfo.from_api_response(card_data)
         except Exception as e:
-            raise PokedexAPIError(
-                f"Card not found: {tcgdex_id}\nTry 'pkm sets' to browse available sets."
-            ) from e
+            raise PokedexAPIError(ERROR_CARD_NOT_FOUND.format(id=tcgdex_id)) from e
 
     async def get_card_raw(
         self, set_id: str, card_number: str, language: Optional[str] = None
@@ -155,9 +159,8 @@ class TCGdexAPI:
             return raw_dict
 
         except Exception as e:
-            raise PokedexAPIError(
-                f"Card not found: {set_id}-{card_number} (language: {language or self.language})"
-            ) from e
+            tcgdex_id = f"{set_id}-{card_number}"
+            raise PokedexAPIError(ERROR_CARD_NOT_FOUND.format(id=tcgdex_id)) from e
 
     async def get_all_sets(self) -> list[SetInfo]:
         """Fetch all available sets from API.
@@ -173,8 +176,8 @@ class TCGdexAPI:
             return [SetInfo.from_api_response(s) for s in sets_data]
         except Exception as e:
             raise PokedexAPIError(
-                f"Failed to fetch sets from API: {e}\n"
-                f"Please check your internet connection."
+                ERROR_API_FAILED.format(resource="sets", error=str(e))
+                + "\nPlease check your internet connection."
             ) from e
 
     async def get_set(self, set_id: str) -> SetInfo:
@@ -193,9 +196,7 @@ class TCGdexAPI:
             set_data = await self.sdk.set.get(set_id)
             return SetInfo.from_api_response(set_data)
         except Exception as e:
-            raise PokedexAPIError(
-                f"Set not found: {set_id}\nTry 'poke sets' to browse available sets."
-            ) from e
+            raise PokedexAPIError(ERROR_SET_NOT_FOUND.format(set_id=set_id)) from e
 
 
 # Global API instances (lazy-initialized per language)
