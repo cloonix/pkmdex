@@ -9,7 +9,13 @@ from pathlib import Path
 from typing import Optional
 
 from . import db, api, config, analyzer
-from .models import CardInfo, VALID_LANGUAGES, validate_language
+from .models import (
+    CardInfo,
+    VALID_LANGUAGES,
+    VALID_VARIANTS,
+    validate_language,
+    validate_variant,
+)
 
 
 def parse_card_input(card_str: str) -> tuple[str, str, str, str]:
@@ -52,12 +58,7 @@ def parse_card_input(card_str: str) -> tuple[str, str, str, str]:
     validate_language(language)
 
     # Validate variant
-    valid_variants = {"normal", "reverse", "holo", "firstEdition"}
-    if variant not in valid_variants:
-        raise ValueError(
-            f"Invalid variant: {variant}\n"
-            f"Valid variants: {', '.join(sorted(valid_variants))}"
-        )
+    validate_variant(variant)
 
     return language, set_id, card_number, variant
 
@@ -547,7 +548,7 @@ async def handle_info(args: argparse.Namespace) -> int:
 
         # Show available variants
         print("\nAvailable Variants:")
-        for variant in ["normal", "reverse", "holo", "firstEdition"]:
+        for variant in sorted(VALID_VARIANTS):
             available = card_info.available_variants.is_valid(variant)
             symbol = "✓" if available else "✗"
             print(f"  {symbol} {variant}")

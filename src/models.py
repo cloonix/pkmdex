@@ -23,6 +23,10 @@ VALID_LANGUAGES = frozenset(
 )
 
 
+# Valid card variant types
+VALID_VARIANTS = frozenset(["normal", "reverse", "holo", "firstEdition"])
+
+
 def validate_language(language: str) -> None:
     """Validate language code.
 
@@ -37,6 +41,22 @@ def validate_language(language: str) -> None:
             f"Invalid language: {language}\n"
             f"Valid languages: {', '.join(sorted(VALID_LANGUAGES))}\n"
             f"Note: Use 'de' for German (default)"
+        )
+
+
+def validate_variant(variant: str) -> None:
+    """Validate card variant type.
+
+    Args:
+        variant: Variant name to validate
+
+    Raises:
+        ValueError: If variant is not valid
+    """
+    if variant not in VALID_VARIANTS:
+        raise ValueError(
+            f"Invalid variant: {variant}\n"
+            f"Valid variants: {', '.join(sorted(VALID_VARIANTS))}"
         )
 
 
@@ -81,11 +101,9 @@ class CardVariants:
         """Get list of available variant names.
 
         Returns:
-            List of variant names where the variant is available
+            List of variant names where the variant is available (sorted)
         """
-        return [
-            v for v in ["normal", "reverse", "holo", "firstEdition"] if getattr(self, v)
-        ]
+        return sorted([v for v in VALID_VARIANTS if getattr(self, v)])
 
     def to_json(self) -> dict:
         """Convert to JSON-serializable dict.
