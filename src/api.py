@@ -15,15 +15,48 @@ class PokedexAPIError(Exception):
 
 
 class TCGdexAPI:
-    """Wrapper around TCGdex SDK for German Pokemon cards."""
+    """Wrapper around TCGdex SDK with German language support."""
 
     def __init__(self, language: str = "de"):
-        """Initialize TCGdex API client.
+        """Initialize API client.
 
         Args:
-            language: Language code (default: "de" for German)
+            language: Language code for API responses (default: German)
         """
+        self.language = language
         self.sdk = TCGdex(language)
+
+    async def _fetch_english_rarity(self, tcgdex_id: str, card_data) -> None:
+        """Fetch and replace rarity from English API for non-English cards.
+
+        Modifies card_data in place by replacing rarity with English version.
+        This ensures rarity values are consistent across languages.
+
+        Args:
+            tcgdex_id: Full TCGdex card ID
+            card_data: Card data object (dict or dataclass) to modify
+        """
+        if self.language == "en":
+            return  # Already English, no need to fetch
+
+        try:
+            en_api = get_api("en")
+            en_card_data = await en_api.sdk.card.get(tcgdex_id)
+
+            # Replace rarity with English version
+            if isinstance(card_data, dict):
+                card_data["rarity"] = (
+                    getattr(en_card_data, "rarity", None)
+                    if hasattr(en_card_data, "rarity")
+                    else en_card_data.get("rarity")
+                )
+            else:
+                # Card data is a dataclass
+                card_data.rarity = getattr(en_card_data, "rarity", None)
+        except (PokedexAPIError, AttributeError, KeyError) as e:
+            # If English fetch fails, use translated rarity (silently)
+            # Can fail if: API error, card not found, or rarity attribute missing
+            pass
         self.language = language
 
         # Set custom base URL if configured
@@ -83,10 +116,10 @@ class TCGdexAPI:
             tcgdex_id: Full TCGdex card ID (e.g., "me01-136")
 
         Returns:
-            CardInfo instance with card metadata
+            CardInfo instance with card details
 
         Raises:
-            PokedexAPIError: If card is not found or API request fails
+            PokedexAPIError: If card cannot be fetched
         """
         try:
             card_data = await self.sdk.card.get(tcgdex_id)
@@ -94,23 +127,7 @@ class TCGdexAPI:
             # v2: No JSON file saving - all data goes to database via CLI layer
 
             # Fetch rarity from English API if not using English
-            if self.language != "en":
-                try:
-                    en_api = get_api("en")
-                    en_card_data = await en_api.sdk.card.get(tcgdex_id)
-                    # Replace rarity with English version
-                    if isinstance(card_data, dict):
-                        card_data["rarity"] = (
-                            getattr(en_card_data, "rarity", None)
-                            if hasattr(en_card_data, "rarity")
-                            else en_card_data.get("rarity")
-                        )
-                    else:
-                        # Card data is a dataclass
-                        card_data.rarity = getattr(en_card_data, "rarity", None)
-                except:
-                    # If English fetch fails, use translated rarity
-                    pass
+            await self._fetch_english_rarity(tcgdex_id, card_data)
 
             return CardInfo.from_api_response(card_data)
         except Exception as e:
@@ -129,18 +146,15 @@ class TCGdexAPI:
             language: Optional language override (defaults to API language)
 
         Returns:
-            Raw card data dictionary
+            Dict with raw API response data
 
         Raises:
-            PokedexAPIError: If card is not found or API request fails
+            PokedexAPIError: If card cannot be fetched
         """
-        try:
-            # Use different API client if language specified
-            if language and language != self.language:
-                api = get_api(language)
-                return await api.get_card_raw(set_id, card_number, language)
+        from .db import build_tcgdex_id
 
-            tcgdex_id = f"{set_id}-{card_number}"
+        try:
+            tcgdex_id = build_tcgdex_id(set_id, card_number)
             card_data = await self.sdk.card.get(tcgdex_id)
 
             # Convert to dict

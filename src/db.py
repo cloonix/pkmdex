@@ -141,6 +141,19 @@ def get_connection(
         conn.close()
 
 
+def build_tcgdex_id(set_id: str, card_number: str) -> str:
+    """Build TCGdex ID from set_id and card_number.
+
+    Args:
+        set_id: Set identifier (e.g., "me01")
+        card_number: Card number (e.g., "136")
+
+    Returns:
+        Full TCGdex ID (e.g., "me01-136")
+    """
+    return f"{set_id}-{card_number}"
+
+
 def parse_tcgdex_id(tcgdex_id: str) -> tuple[str, str]:
     """Parse TCGdex ID into set_id and card_number.
 
@@ -603,93 +616,14 @@ def get_v2_collection_stats() -> dict:
         }
 
 
-# === v1 Compatibility Functions (Deprecated - Keep for migration) ===
+# === v1 Compatibility Functions - REMOVED ===
+# The v1 schema compatibility functions have been removed as the migration
+# to v2 schema is complete. See git history if needed.
+# Removed: add_card_variant, remove_card_variant, get_owned_cards,
+#           get_owned_card_ids, get_card_ownership, get_collection_stats
 
 
-def add_card_variant(
-    tcgdex_id: str, variant: str, language: str = "de", quantity: int = 1
-) -> OwnedCard:
-    """Add or update a card variant in collection.
 
-    Args:
-        tcgdex_id: Full TCGdex ID (e.g., "me01-136")
-        variant: Variant name
-        language: Language code (e.g., 'de', 'en')
-        quantity: Quantity to add (default 1)
-
-    Returns:
-        Updated OwnedCard instance
-    """
-    set_id, card_number = parse_tcgdex_id(tcgdex_id)
-
-    with get_connection() as conn:
-        cursor = conn.execute(
-            """
-            INSERT INTO cards (tcgdex_id, variant, language, quantity, set_id, card_number)
-            VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT(tcgdex_id, variant, language) 
-            DO UPDATE SET 
-                quantity = quantity + ?,
-                updated_at = CURRENT_TIMESTAMP
-            RETURNING *
-            """,
-            (tcgdex_id, variant, language, quantity, set_id, card_number, quantity),
-        )
-        row = cursor.fetchone()
-        conn.commit()
-        return OwnedCard.from_db_row(row)
-
-
-def remove_card_variant(
-    tcgdex_id: str, variant: str, language: str = "de", quantity: int = 1
-) -> Optional[OwnedCard]:
-    """Remove quantity from a card variant, or delete if reaches 0.
-
-    Args:
-        tcgdex_id: Full TCGdex ID
-        variant: Variant name
-        language: Language code (e.g., 'de', 'en')
-        quantity: Quantity to remove (default 1)
-
-    Returns:
-        Updated OwnedCard if still exists, None if deleted
-    """
-    with get_connection() as conn:
-        # Get current quantity
-        cursor = conn.execute(
-            "SELECT quantity FROM cards WHERE tcgdex_id = ? AND variant = ? AND language = ?",
-            (tcgdex_id, variant, language),
-        )
-        row = cursor.fetchone()
-
-        if not row:
-            return None
-
-        current_qty = row[0]
-        new_qty = current_qty - quantity
-
-        if new_qty <= 0:
-            # Delete the record
-            conn.execute(
-                "DELETE FROM cards WHERE tcgdex_id = ? AND variant = ? AND language = ?",
-                (tcgdex_id, variant, language),
-            )
-            conn.commit()
-            return None
-        else:
-            # Update quantity
-            cursor = conn.execute(
-                """
-                UPDATE cards 
-                SET quantity = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE tcgdex_id = ? AND variant = ? AND language = ?
-                RETURNING *
-                """,
-                (new_qty, tcgdex_id, variant, language),
-            )
-            row = cursor.fetchone()
-            conn.commit()
-            return OwnedCard.from_db_row(row)
 
 
 def remove_all_card_variants(tcgdex_id: str, language: str = "de") -> int:
@@ -712,84 +646,6 @@ def remove_all_card_variants(tcgdex_id: str, language: str = "de") -> int:
         return len(deleted_rows)
 
 
-def get_owned_cards(
-    set_id: Optional[str] = None, language: Optional[str] = None
-) -> list[OwnedCard]:
-    """Get all owned cards, optionally filtered by set and/or language.
-
-    Args:
-        set_id: Optional set ID to filter by
-        language: Optional language code to filter by (e.g., 'de', 'en')
-
-    Returns:
-        List of OwnedCard instances
-    """
-    with get_connection() as conn:
-        query = "SELECT * FROM cards WHERE 1=1"
-        params = []
-
-        if set_id:
-            query += " AND set_id = ?"
-            params.append(set_id)
-
-        if language:
-            query += " AND language = ?"
-            params.append(language)
-
-        query += " ORDER BY set_id, card_number"
-
-        cursor = conn.execute(query, params)
-        return [OwnedCard.from_db_row(row) for row in cursor.fetchall()]
-
-
-def get_owned_card_ids() -> list[tuple[str, str]]:
-    """Get all unique (tcgdex_id, language) pairs from owned cards.
-
-    Returns:
-        List of (tcgdex_id, language) tuples for all owned cards
-    """
-    with get_connection() as conn:
-        cursor = conn.execute(
-            """
-            SELECT DISTINCT tcgdex_id, language 
-            FROM cards 
-            ORDER BY tcgdex_id, language
-            """
-        )
-        return cursor.fetchall()
-
-
-def get_card_ownership(tcgdex_id: str, language: str) -> tuple[int, list[str]]:
-    """Get quantity and variants for a specific card+language combination.
-
-    This function is optimized for analyzer queries, avoiding the N+1 problem
-    by doing a targeted lookup instead of loading all cards.
-
-    Args:
-        tcgdex_id: Full TCGdex ID (e.g., "me01-001")
-        language: Language code (e.g., "de", "en", "fr")
-
-    Returns:
-        Tuple of (total_quantity, variant_list)
-        Returns (0, []) if card not owned in this language
-
-    Example:
-        >>> get_card_ownership("me01-001", "de")
-        (3, ["normal", "reverse"])  # 2 normal + 1 reverse = 3 total
-    """
-    with get_connection() as conn:
-        cursor = conn.execute(
-            "SELECT variant, quantity FROM cards WHERE tcgdex_id = ? AND language = ?",
-            (tcgdex_id, language),
-        )
-        rows = cursor.fetchall()
-
-    if not rows:
-        return (0, [])
-
-    variants = [row[0] for row in rows]
-    total_qty = sum(row[1] for row in rows)
-    return (total_qty, variants)
 
 
 # === Set Cache Operations ===
@@ -897,63 +753,7 @@ def get_cache_stats() -> dict:
 # === Collection Statistics ===
 
 
-def get_collection_stats() -> dict:
-    """Get collection statistics.
 
-    Returns:
-        Dict with various statistics about the collection
-    """
-    with get_connection() as conn:
-        # Total unique cards (count distinct tcgdex_id + language combinations)
-        cursor = conn.execute(
-            "SELECT COUNT(DISTINCT tcgdex_id || '-' || language) FROM cards"
-        )
-        unique_cards = cursor.fetchone()[0] or 0
-
-        # Total quantity across all cards
-        cursor = conn.execute("SELECT SUM(quantity) FROM cards")
-        total_cards = cursor.fetchone()[0] or 0
-
-        # Sets represented
-        cursor = conn.execute("SELECT COUNT(DISTINCT set_id) FROM cards")
-        sets_count = cursor.fetchone()[0] or 0
-
-        # Most collected set
-        cursor = conn.execute(
-            """
-            SELECT set_id, SUM(quantity) as qty
-            FROM cards
-            GROUP BY set_id
-            ORDER BY qty DESC
-            LIMIT 1
-            """
-        )
-        row = cursor.fetchone()
-        most_collected_set = row[0] if row else None
-        most_collected_qty = row[1] if row else 0
-
-        # Variant breakdown
-        cursor = conn.execute(
-            """
-            SELECT variant, SUM(quantity) as qty
-            FROM cards
-            GROUP BY variant
-            """
-        )
-        variant_breakdown = {row[0]: row[1] for row in cursor.fetchall()}
-
-        # Rarity breakdown (no longer available without card_cache)
-        rarity_breakdown = {}  # Deprecated - would need raw JSON parsing
-
-        return {
-            "unique_cards": unique_cards,
-            "total_cards": total_cards,
-            "sets_count": sets_count,
-            "most_collected_set": most_collected_set,
-            "most_collected_qty": most_collected_qty,
-            "variant_breakdown": variant_breakdown,
-            "rarity_breakdown": rarity_breakdown,
-        }
 
 
 # === Export/Import Operations ===
