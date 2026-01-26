@@ -34,6 +34,11 @@ class TCGdexAPI:
         self.language = language
         self.sdk = TCGdex(language)
 
+        # Set custom base URL if configured
+        base_url = config.get_api_base_url()
+        if base_url:
+            self.sdk.setEndpoint(base_url)
+
     async def _fetch_english_rarity(self, tcgdex_id: str, card_data) -> None:
         """Fetch and replace rarity from English API for non-English cards.
 
