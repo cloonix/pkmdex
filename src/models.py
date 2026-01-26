@@ -5,6 +5,41 @@ from datetime import datetime
 from typing import Optional
 
 
+# Supported TCGdex languages
+VALID_LANGUAGES = frozenset(
+    [
+        "de",  # German
+        "en",  # English
+        "fr",  # French
+        "es",  # Spanish
+        "it",  # Italian
+        "pt",  # Portuguese
+        "ja",  # Japanese
+        "ko",  # Korean
+        "zh-tw",  # Traditional Chinese
+        "th",  # Thai
+        "id",  # Indonesian
+    ]
+)
+
+
+def validate_language(language: str) -> None:
+    """Validate language code.
+
+    Args:
+        language: ISO 639-1 language code to validate
+
+    Raises:
+        ValueError: If language is not supported
+    """
+    if language not in VALID_LANGUAGES:
+        raise ValueError(
+            f"Invalid language: {language}\n"
+            f"Valid languages: {', '.join(sorted(VALID_LANGUAGES))}\n"
+            f"Note: Use 'de' for German (default)"
+        )
+
+
 @dataclass
 class CardVariants:
     """Available variants for a card from TCGdex API."""

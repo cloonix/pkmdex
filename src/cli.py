@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Optional
 
 from . import db, api, config, analyzer
-from .models import CardInfo
+from .models import CardInfo, VALID_LANGUAGES, validate_language
 
 
 def parse_card_input(card_str: str) -> tuple[str, str, str, str]:
@@ -49,25 +49,7 @@ def parse_card_input(card_str: str) -> tuple[str, str, str, str]:
     variant = variant.strip().lower()
 
     # Validate language
-    valid_languages = {
-        "de",
-        "en",
-        "fr",
-        "es",
-        "it",
-        "pt",
-        "ja",
-        "ko",
-        "zh-tw",
-        "th",
-        "id",
-    }
-    if language not in valid_languages:
-        raise ValueError(
-            f"Invalid language: {language}\n"
-            f"Valid languages: {', '.join(sorted(valid_languages))}\n"
-            f"Note: Use 'de' for German (default)"
-        )
+    validate_language(language)
 
     # Validate variant
     valid_variants = {"normal", "reverse", "holo", "firstEdition"}
@@ -340,20 +322,7 @@ def handle_list(args: argparse.Namespace) -> int:
     if filter_arg:
         filter_arg = filter_arg.lower()
         # Check if it's a valid language code
-        valid_languages = {
-            "de",
-            "en",
-            "fr",
-            "es",
-            "it",
-            "pt",
-            "ja",
-            "ko",
-            "zh-tw",
-            "th",
-            "id",
-        }
-        if filter_arg in valid_languages:
+        if filter_arg in VALID_LANGUAGES:
             language_filter = filter_arg
         else:
             set_filter = filter_arg
