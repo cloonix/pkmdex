@@ -83,12 +83,15 @@ class TCGdexAPI:
             tcgdex_id: Full TCGdex card ID (e.g., "me01-136")
 
         Returns:
-            CardInfo instance with card metadata
+            CardInfo instance with card details
 
         Raises:
-            PokedexAPIError: If card is not found or API request fails
+            PokedexAPIError: If card cannot be fetched
         """
+        from .db import build_tcgdex_id
+
         try:
+            tcgdex_id = build_tcgdex_id(set_id, card_number)
             card_data = await self.sdk.card.get(tcgdex_id)
 
             # v2: No JSON file saving - all data goes to database via CLI layer
@@ -129,18 +132,15 @@ class TCGdexAPI:
             language: Optional language override (defaults to API language)
 
         Returns:
-            Raw card data dictionary
+            Dict with raw API response data
 
         Raises:
-            PokedexAPIError: If card is not found or API request fails
+            PokedexAPIError: If card cannot be fetched
         """
-        try:
-            # Use different API client if language specified
-            if language and language != self.language:
-                api = get_api(language)
-                return await api.get_card_raw(set_id, card_number, language)
+        from .db import build_tcgdex_id
 
-            tcgdex_id = f"{set_id}-{card_number}"
+        try:
+            tcgdex_id = build_tcgdex_id(set_id, card_number)
             card_data = await self.sdk.card.get(tcgdex_id)
 
             # Convert to dict

@@ -141,6 +141,19 @@ def get_connection(
         conn.close()
 
 
+def build_tcgdex_id(set_id: str, card_number: str) -> str:
+    """Build TCGdex ID from set_id and card_number.
+
+    Args:
+        set_id: Set identifier (e.g., "me01")
+        card_number: Card number (e.g., "136")
+
+    Returns:
+        Full TCGdex ID (e.g., "me01-136")
+    """
+    return f"{set_id}-{card_number}"
+
+
 def parse_tcgdex_id(tcgdex_id: str) -> tuple[str, str]:
     """Parse TCGdex ID into set_id and card_number.
 

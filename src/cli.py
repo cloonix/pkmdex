@@ -62,6 +62,19 @@ def parse_card_input(card_str: str) -> tuple[str, str, str, str]:
     return language, set_id, card_number, variant
 
 
+def build_tcgdex_id(set_id: str, card_number: str) -> str:
+    """Build TCGdex ID from components. Delegates to db.build_tcgdex_id.
+
+    Args:
+        set_id: Set identifier
+        card_number: Card number
+
+    Returns:
+        Full TCGdex ID
+    """
+    return db.build_tcgdex_id(set_id, card_number)
+
+
 async def fetch_card_info(language: str, set_id: str, card_number: str) -> CardInfo:
     """Fetch card from API or cache.
 
@@ -101,7 +114,7 @@ async def handle_add(args: argparse.Namespace) -> int:
         return 1
 
     try:
-        tcgdex_id = f"{set_id}-{card_number}"
+        tcgdex_id = build_tcgdex_id(set_id, card_number)
 
         # Step 1: Fetch English card data (canonical) - get raw response for extra fields
         api_en = api.get_api("en")
@@ -236,7 +249,7 @@ async def handle_rm(args: argparse.Namespace) -> int:
         language = language.strip().lower()
         set_id = set_id.strip().lower()
         card_number = card_number.strip()
-        tcgdex_id = f"{set_id}-{card_number}"
+        tcgdex_id = build_tcgdex_id(set_id, card_number)
 
         # Get card name from DB (v2 schema)
         card_name_local = db.get_card_name(tcgdex_id, language)
@@ -277,7 +290,7 @@ async def handle_rm(args: argparse.Namespace) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    tcgdex_id = f"{set_id}-{card_number}"
+    tcgdex_id = build_tcgdex_id(set_id, card_number)
 
     # Get card name from DB (v2 schema)
     card_name_local = db.get_card_name(tcgdex_id, language)
@@ -488,7 +501,7 @@ async def handle_info(args: argparse.Namespace) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    tcgdex_id = f"{set_id}-{card_number}"
+    tcgdex_id = build_tcgdex_id(set_id, card_number)
 
     # Show raw JSON if requested
     if args.raw:
