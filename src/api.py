@@ -191,6 +191,55 @@ class TCGdexAPI:
                 f"Card not found: {tcgdex_id}\nTry 'pkm sets' to browse available sets."
             ) from e
 
+    async def get_card_raw(
+        self, set_id: str, card_number: str, language: Optional[str] = None
+    ) -> dict:
+        """Fetch raw card data as dictionary.
+
+        Args:
+            set_id: TCGdex set ID (e.g., "me01")
+            card_number: Card number in set (e.g., "136")
+            language: Optional language override (defaults to API language)
+
+        Returns:
+            Raw card data dictionary
+
+        Raises:
+            PokedexAPIError: If card is not found or API request fails
+        """
+        try:
+            # Use different API client if language specified
+            if language and language != self.language:
+                api = get_api(language)
+                return await api.get_card_raw(set_id, card_number, language)
+
+            tcgdex_id = f"{set_id}-{card_number}"
+            card_data = await self.sdk.card.get(tcgdex_id)
+
+            # Convert to dict
+            if is_dataclass(card_data):
+                raw_dict = asdict(card_data)
+            else:
+                raw_dict = dict(card_data)
+
+            # Remove non-serializable SDK reference
+            def remove_sdk(obj):
+                if isinstance(obj, dict):
+                    obj.pop("sdk", None)
+                    for v in obj.values():
+                        remove_sdk(v)
+                elif isinstance(obj, list):
+                    for item in obj:
+                        remove_sdk(item)
+
+            remove_sdk(raw_dict)
+            return raw_dict
+
+        except Exception as e:
+            raise PokedexAPIError(
+                f"Card not found: {set_id}-{card_number} (language: {language or self.language})"
+            ) from e
+
     async def get_all_sets(self) -> list[SetInfo]:
         """Fetch all available sets from API.
 
