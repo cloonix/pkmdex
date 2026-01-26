@@ -1145,10 +1145,84 @@ def import_from_json(input_path: Path) -> dict:
             }
 
         else:
-            # v1 format: Not supported in v2 database
-            # User should use migration script instead
-            raise ValueError(
-                "Cannot import v1 format into v2 database. "
-                "Please use 'pkm migrate' to upgrade your database first, "
-                "or export from a v2 database."
+            # v1 format: Import v1 owned cards into v2 owned_cards table
+            # Note: This only restores ownership data, not card metadata
+
+            # IMPORTANT: Ensure v2 schema exists before importing
+            # Drop old v1 tables if they exist (they conflict with v2 schema)
+            cursor = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='cards'"
             )
+            cards_table = cursor.fetchone()
+            if cards_table:
+                # Check if it's v1 or v2 schema
+                cursor = conn.execute("PRAGMA table_info(cards)")
+                columns = {row[1] for row in cursor.fetchall()}
+                if "quantity" in columns:  # v1 schema
+                    # Rename old cards table as backup
+                    conn.execute("ALTER TABLE cards RENAME TO cards_v1_import_backup")
+
+            # Now clear v2 tables (or create them if they don't exist)
+            conn.execute("DELETE FROM owned_cards WHERE 1")
+            conn.execute("DELETE FROM card_names WHERE 1")
+            conn.execute("DELETE FROM cards WHERE 1")
+            conn.execute("DELETE FROM set_cache WHERE 1")
+
+            # Import v1 cards (ownership data)
+            # v1 format has: tcgdex_id, variant, language, quantity, set_id, card_number
+            owned_cards_imported = 0
+            cards_to_fetch = set()  # Track unique cards we need to fetch
+
+            for card in import_data.get("cards", []):
+                tcgdex_id = card["tcgdex_id"]
+                variant = card["variant"]
+                language = card["language"]
+                quantity = card["quantity"]
+                added_at = card.get("added_at")
+
+                # Track card for metadata fetch
+                cards_to_fetch.add(tcgdex_id)
+
+                # Import to owned_cards table
+                conn.execute(
+                    """
+                    INSERT INTO owned_cards (tcgdex_id, variant, language, quantity, added_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (tcgdex_id, variant, language, quantity, added_at),
+                )
+                owned_cards_imported += 1
+
+            # Import set cache if available
+            set_cache_imported = 0
+            for set_info in import_data.get("set_cache", []):
+                conn.execute(
+                    """
+                    INSERT INTO set_cache
+                    (set_id, name, card_count, release_date, serie_id, serie_name, cached_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        set_info["set_id"],
+                        set_info["name"],
+                        set_info.get("card_count"),
+                        set_info.get("release_date"),
+                        set_info.get("serie_id"),
+                        set_info.get("serie_name"),
+                        set_info.get("cached_at"),
+                    ),
+                )
+                set_cache_imported += 1
+
+            conn.commit()
+
+            return {
+                "cards_count": 0,  # No card metadata in v1 import
+                "card_names_count": 0,
+                "owned_cards_count": owned_cards_imported,
+                "set_cache_count": set_cache_imported,
+                "exported_at": import_data.get("exported_at"),
+                "version": import_data["version"],
+                "cards_to_sync": len(cards_to_fetch),  # Number of unique cards to sync
+                "needs_sync": True,  # Flag to indicate sync is required
+            }

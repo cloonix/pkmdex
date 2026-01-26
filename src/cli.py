@@ -1004,6 +1004,15 @@ def handle_import(args: argparse.Namespace) -> int:
         print(f"  Set cache: {result['set_cache_count']}")
         if result.get("exported_at"):
             print(f"  Original export date: {result['exported_at']}")
+
+        # Show sync hint for v1 imports
+        if result.get("needs_sync"):
+            print(
+                f"\n⚠ Imported v1 backup: ownership data restored, but card metadata is missing."
+            )
+            print(f"  Run 'pkm sync' to fetch card details from the API.")
+            print(f"  ({result.get('cards_to_sync', 0)} unique cards to sync)")
+
         return 0
     except ValueError as e:
         print(f"Error: {e}", file=sys.stderr)
