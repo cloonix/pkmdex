@@ -10,6 +10,33 @@ from typing import Optional, Generator
 from .models import OwnedCard, CardInfo, SetInfo, CardVariants
 
 
+def row_to_dict(cursor: sqlite3.Cursor, row: tuple) -> dict:
+    """Convert a single database row to dictionary.
+
+    Args:
+        cursor: SQLite cursor with description metadata
+        row: Row tuple from fetchone()
+
+    Returns:
+        Dictionary mapping column names to values
+    """
+    columns = [desc[0] for desc in cursor.description]
+    return dict(zip(columns, row))
+
+
+def rows_to_dicts(cursor: sqlite3.Cursor) -> list[dict]:
+    """Convert all database rows to list of dictionaries.
+
+    Args:
+        cursor: SQLite cursor with description metadata
+
+    Returns:
+        List of dictionaries, one per row
+    """
+    columns = [desc[0] for desc in cursor.description]
+    return [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+
 # Database file location - can be overridden for testing
 _DEFAULT_DB_PATH = None
 DB_PATH = None
@@ -265,8 +292,7 @@ def get_card(tcgdex_id: str) -> Optional[dict]:
         if not row:
             return None
 
-        columns = [desc[0] for desc in cursor.description]
-        return dict(zip(columns, row))
+        return row_to_dict(cursor, row)
 
 
 def get_cards_by_set(set_id: str) -> list[dict]:
@@ -282,8 +308,7 @@ def get_cards_by_set(set_id: str) -> list[dict]:
         cursor = conn.execute(
             "SELECT * FROM cards WHERE set_id = ? ORDER BY card_number", (set_id,)
         )
-        columns = [desc[0] for desc in cursor.description]
-        return [dict(zip(columns, row)) for row in cursor.fetchall()]
+        return rows_to_dicts(cursor)
 
 
 def get_stale_cards(days: int = 7) -> list[str]:
@@ -489,8 +514,7 @@ def get_v2_owned_cards(
         query += " ORDER BY c.set_id, c.card_number"
 
         cursor = conn.execute(query, params)
-        columns = [desc[0] for desc in cursor.description]
-        return [dict(zip(columns, row)) for row in cursor.fetchall()]
+        return rows_to_dicts(cursor)
 
 
 def get_owned_tcgdex_ids() -> list[str]:
@@ -623,9 +647,6 @@ def get_v2_collection_stats() -> dict:
 #           get_owned_card_ids, get_card_ownership, get_collection_stats
 
 
-
-
-
 def remove_all_card_variants(tcgdex_id: str, language: str = "de") -> int:
     """Remove all variants of a card in a specific language (v2 schema).
 
@@ -644,8 +665,6 @@ def remove_all_card_variants(tcgdex_id: str, language: str = "de") -> int:
         deleted_rows = cursor.fetchall()
         conn.commit()
         return len(deleted_rows)
-
-
 
 
 # === Set Cache Operations ===
@@ -753,9 +772,6 @@ def get_cache_stats() -> dict:
 # === Collection Statistics ===
 
 
-
-
-
 # === Export/Import Operations ===
 
 
@@ -771,25 +787,21 @@ def export_to_json(output_path: Path) -> dict:
     with get_connection() as conn:
         # Export canonical card data
         cursor = conn.execute("SELECT * FROM cards ORDER BY set_id, card_number")
-        columns = [desc[0] for desc in cursor.description]
-        cards = [dict(zip(columns, row)) for row in cursor.fetchall()]
+        cards = rows_to_dicts(cursor)
 
         # Export localized card names
         cursor = conn.execute("SELECT * FROM card_names ORDER BY tcgdex_id, language")
-        columns = [desc[0] for desc in cursor.description]
-        card_names = [dict(zip(columns, row)) for row in cursor.fetchall()]
+        card_names = rows_to_dicts(cursor)
 
         # Export owned cards (user's collection)
         cursor = conn.execute(
             "SELECT * FROM owned_cards ORDER BY tcgdex_id, variant, language"
         )
-        columns = [desc[0] for desc in cursor.description]
-        owned_cards = [dict(zip(columns, row)) for row in cursor.fetchall()]
+        owned_cards = rows_to_dicts(cursor)
 
         # Export set cache
         cursor = conn.execute("SELECT * FROM set_cache ORDER BY set_id")
-        columns = [desc[0] for desc in cursor.description]
-        set_cache = [dict(zip(columns, row)) for row in cursor.fetchall()]
+        set_cache = rows_to_dicts(cursor)
 
     # Create export data
     export_data = {
