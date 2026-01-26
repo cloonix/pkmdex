@@ -53,16 +53,10 @@ class TCGdexAPI:
             else:
                 # Card data is a dataclass
                 card_data.rarity = getattr(en_card_data, "rarity", None)
-        except (PokedexAPIError, AttributeError, KeyError) as e:
+        except (PokedexAPIError, AttributeError, KeyError):
             # If English fetch fails, use translated rarity (silently)
             # Can fail if: API error, card not found, or rarity attribute missing
             pass
-        self.language = language
-
-        # Set custom base URL if configured
-        base_url = config.get_api_base_url()
-        if base_url:
-            self.sdk.setEndpoint(base_url)
 
     async def get_card(self, set_id: str, card_number: str) -> CardInfo:
         """Fetch card information from API.
@@ -85,23 +79,7 @@ class TCGdexAPI:
             # v2: No JSON file saving - all data goes to database via CLI layer
 
             # Fetch rarity from English API if not using English
-            if self.language != "en":
-                try:
-                    en_api = get_api("en")
-                    en_card_data = await en_api.sdk.card.get(tcgdex_id)
-                    # Replace rarity with English version
-                    if isinstance(card_data, dict):
-                        card_data["rarity"] = (
-                            getattr(en_card_data, "rarity", None)
-                            if hasattr(en_card_data, "rarity")
-                            else en_card_data.get("rarity")
-                        )
-                    else:
-                        # Card data is a dataclass
-                        card_data.rarity = getattr(en_card_data, "rarity", None)
-                except:
-                    # If English fetch fails, use translated rarity
-                    pass
+            await self._fetch_english_rarity(tcgdex_id, card_data)
 
             return CardInfo.from_api_response(card_data)
         except Exception as e:
