@@ -17,6 +17,7 @@ class Config:
     db_path: Path
     backups_path: Path
     raw_data_path: Path
+    api_base_url: Optional[str] = None  # Optional custom API base URL
 
     @classmethod
     def default(cls) -> "Config":
@@ -38,6 +39,7 @@ class Config:
             "db_path": str(self.db_path),
             "backups_path": str(self.backups_path),
             "raw_data_path": str(self.raw_data_path),
+            "api_base_url": self.api_base_url,
         }
 
     @classmethod
@@ -54,6 +56,7 @@ class Config:
             db_path=Path(data["db_path"]),
             backups_path=Path(data["backups_path"]),
             raw_data_path=Path(raw_data_path),
+            api_base_url=data.get("api_base_url"),  # Optional field
         )
 
 
@@ -190,3 +193,24 @@ def reset_config() -> Config:
     config.raw_data_path.mkdir(parents=True, exist_ok=True)
     save_config(config)
     return config
+
+
+def get_api_base_url() -> Optional[str]:
+    """Get API base URL from config or environment.
+
+    Priority:
+    1. TCGDEX_API_URL environment variable
+    2. api_base_url from config file
+    3. None (use TCGdex default)
+
+    Returns:
+        Custom API base URL or None for default
+    """
+    # Check environment variable first
+    env_url = os.environ.get("TCGDEX_API_URL")
+    if env_url:
+        return env_url
+
+    # Check config file
+    config = load_config()
+    return config.api_base_url

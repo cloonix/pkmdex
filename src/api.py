@@ -5,6 +5,7 @@ from tcgdexsdk import TCGdex
 from dataclasses import asdict, is_dataclass
 
 from .models import CardInfo, SetInfo
+from . import config
 
 
 class PokedexAPIError(Exception):
@@ -24,6 +25,11 @@ class TCGdexAPI:
         """
         self.sdk = TCGdex(language)
         self.language = language
+
+        # Set custom base URL if configured
+        base_url = config.get_api_base_url()
+        if base_url:
+            self.sdk.setEndpoint(base_url)
 
     async def get_card(self, set_id: str, card_number: str) -> CardInfo:
         """Fetch card information from API.
