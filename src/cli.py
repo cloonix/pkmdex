@@ -222,7 +222,7 @@ async def handle_add(args: argparse.Namespace) -> int:
 
 
 async def handle_rm(args: argparse.Namespace) -> int:
-    """Handle 'rm' command.
+    """Handle 'rm' command (v2 schema).
 
     Args:
         args: Parsed command-line arguments
@@ -256,12 +256,25 @@ async def handle_rm(args: argparse.Namespace) -> int:
         card_number = card_number.strip()
         tcgdex_id = f"{set_id}-{card_number}"
 
-        # Try to get card name from raw JSON for better output
-        raw_data = config.load_raw_card_data(tcgdex_id)
-        card_name = raw_data.get("name", tcgdex_id) if raw_data else tcgdex_id
+        # Get card name from DB (v2 schema)
+        card_name_local = db.get_card_name(tcgdex_id, language)
+        if not card_name_local:
+            # Fallback to English name
+            card_data = db.get_card(tcgdex_id)
+            card_name = card_data["name"] if card_data else tcgdex_id
+        else:
+            card_name = card_name_local
 
-        # Remove all variants
-        removed_count = db.remove_all_card_variants(tcgdex_id, language)
+        # Remove all variants for this language
+        # Get all owned variants for this card+language
+        all_cards = db.get_v2_owned_cards()
+        removed_count = 0
+        for card in all_cards:
+            if card["tcgdex_id"] == tcgdex_id and card["language"] == language:
+                db.remove_owned_card(
+                    tcgdex_id, card["variant"], language, card["quantity"]
+                )
+                removed_count += 1
 
         if removed_count > 0:
             print(
@@ -284,19 +297,22 @@ async def handle_rm(args: argparse.Namespace) -> int:
 
     tcgdex_id = f"{set_id}-{card_number}"
 
-    # Try to get card name from raw JSON for better output
-    raw_data = config.load_raw_card_data(tcgdex_id)
-    card_name = raw_data.get("name", tcgdex_id) if raw_data else tcgdex_id
+    # Get card name from DB (v2 schema)
+    card_name_local = db.get_card_name(tcgdex_id, language)
+    if not card_name_local:
+        # Fallback to English name
+        card_data = db.get_card(tcgdex_id)
+        card_name = card_data["name"] if card_data else tcgdex_id
+    else:
+        card_name = card_name_local
 
     # Remove the variant
-    result = db.remove_card_variant(tcgdex_id, variant, language)
+    result = db.remove_owned_card(tcgdex_id, variant, language, quantity=1)
 
     if result is None:
         print(f"✓ Removed: {card_name} [{language}] - {variant}")
-    elif result:
-        print(
-            f"✓ Updated: {card_name} [{language}] - {variant} (qty: {result.quantity})"
-        )
+    elif result > 0:
+        print(f"✓ Updated: {card_name} [{language}] - {variant} (qty: {result})")
     else:
         print(
             f"Warning: {card_name} [{language}] - {variant} not in collection",
