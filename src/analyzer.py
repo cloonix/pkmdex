@@ -1,4 +1,4 @@
-"""Collection analysis functions using raw JSON data."""
+"""Collection analysis functions using v2 schema."""
 
 import json
 from pathlib import Path
@@ -44,47 +44,58 @@ class CardAnalysis:
 def load_card_with_ownership(
     tcgdex_id: str, language: str
 ) -> Optional[tuple[CardAnalysis, dict]]:
-    """Load card data from raw JSON and combine with ownership info.
+    """Load card data from database (v2 schema) and combine with ownership info.
 
     Args:
         tcgdex_id: Card ID (e.g., "me01-001")
         language: Language code
 
     Returns:
-        Tuple of (CardAnalysis, raw_data_dict) or None if not found
-        Returning raw_data avoids duplicate loading in analyze_collection
+        Tuple of (CardAnalysis, card_data_dict) or None if not found
+        Returning card_data avoids duplicate queries in analyze_collection
     """
-    # Load raw JSON data (English)
-    raw_data = config.load_raw_card_data(tcgdex_id)
-    if not raw_data:
+    # Get card data from database (English canonical data)
+    card_data = db.get_card(tcgdex_id)
+    if not card_data:
         return None
 
-    # Get ownership info from database (optimized single query)
-    total_quantity, card_variants = db.get_card_ownership(tcgdex_id, language)
+    # Get owned cards for this tcgdex_id + language
+    owned_cards = db.get_v2_owned_cards(language=language)
+    matching_cards = [c for c in owned_cards if c["tcgdex_id"] == tcgdex_id]
 
-    if total_quantity == 0:
+    if not matching_cards:
         return None
 
-    # Extract data from raw JSON
+    # Calculate total quantity and get variants
+    total_quantity = sum(c["quantity"] for c in matching_cards)
+    card_variants = [c["variant"] for c in matching_cards]
+
+    # Parse types from JSON string
+    types = json.loads(card_data["types"]) if card_data.get("types") else []
+
+    # Get localized name (for display)
+    localized_name = db.get_card_name(tcgdex_id, language) or card_data["name"]
+
+    # Build CardAnalysis from database data
     card = CardAnalysis(
         tcgdex_id=tcgdex_id,
-        name=raw_data.get("name", "Unknown"),  # English name
+        name=card_data["name"],  # English name for filtering
         language=language,
-        set_name=raw_data.get("set", {}).get("name", "Unknown"),
-        stage=raw_data.get("stage"),
-        types=raw_data.get("types", []),
-        hp=raw_data.get("hp"),
-        rarity=raw_data.get("rarity"),
-        category=raw_data.get("category", "Unknown"),
+        set_name=matching_cards[0].get("set_name", "Unknown"),
+        stage=card_data.get("stage"),
+        types=types,
+        hp=card_data.get("hp"),
+        rarity=card_data.get("rarity"),
+        category=card_data.get("category", "Unknown"),
         quantity=total_quantity,
         variants=card_variants,
     )
 
-    return (card, raw_data)
+    return (card, card_data)
 
 
 def analyze_collection(filter_criteria: AnalysisFilter) -> list[CardAnalysis]:
-    """Analyze collection based on filter criteria.
+    """Analyze collection based on filter criteria (v2 schema).
 
     Args:
         filter_criteria: AnalysisFilter with filter options
@@ -92,22 +103,53 @@ def analyze_collection(filter_criteria: AnalysisFilter) -> list[CardAnalysis]:
     Returns:
         List of CardAnalysis objects matching the filters
     """
-    # Get all owned card IDs
-    card_ids = db.get_owned_card_ids()
+    # Get all owned cards with JOIN (v2 schema)
+    owned_cards = db.get_v2_owned_cards(
+        set_id=filter_criteria.set_id, language=filter_criteria.language
+    )
 
     results = []
+    processed_keys = set()  # Track (tcgdex_id, language) to avoid duplicates
 
-    for tcgdex_id, language in card_ids:
-        # Apply language filter early
-        if filter_criteria.language and language != filter_criteria.language:
+    for card_dict in owned_cards:
+        tcgdex_id = card_dict["tcgdex_id"]
+        language = card_dict["language"]
+
+        # Skip if already processed (multiple variants)
+        key = (tcgdex_id, language)
+        if key in processed_keys:
             continue
+        processed_keys.add(key)
 
-        # Load card with ownership info (returns raw_data too, avoiding duplicate load)
-        result = load_card_with_ownership(tcgdex_id, language)
-        if not result:
-            continue
+        # Parse types from JSON string
+        types = json.loads(card_dict["types"]) if card_dict.get("types") else []
 
-        card, raw_data = result
+        # Get all variants for this card+language combo
+        matching = [
+            c
+            for c in owned_cards
+            if c["tcgdex_id"] == tcgdex_id and c["language"] == language
+        ]
+        total_quantity = sum(c["quantity"] for c in matching)
+        card_variants = [c["variant"] for c in matching]
+
+        # Build CardAnalysis from database row
+        card = CardAnalysis(
+            tcgdex_id=tcgdex_id,
+            name=card_dict["name_en"],  # English name for filtering
+            language=language,
+            set_name=card_dict.get("set_name", "Unknown"),
+            stage=card_dict.get("stage"),
+            types=types,
+            hp=card_dict.get("hp"),
+            rarity=card_dict.get("rarity"),
+            category=card_dict.get("category", "Unknown"),
+            quantity=total_quantity,
+            variants=card_variants,
+        )
+
+        # Store as dict for filter checks
+        card_data = card_dict
 
         # Apply set_id filter
         if filter_criteria.set_id:
@@ -144,17 +186,9 @@ def analyze_collection(filter_criteria: AnalysisFilter) -> list[CardAnalysis]:
         if filter_criteria.category and card.category != filter_criteria.category:
             continue
 
-        # Apply regulation mark filter
-        if filter_criteria.regulation:
-            regulation_mark = raw_data.get("regulationMark")
-            if regulation_mark != filter_criteria.regulation:
-                continue
-
-        # Apply artist filter (case-insensitive partial match)
-        if filter_criteria.artist:
-            illustrator = raw_data.get("illustrator", "")
-            if filter_criteria.artist.lower() not in illustrator.lower():
-                continue
+        # NOTE: regulation and artist filters removed in v2 schema
+        # These fields are not stored in the cards table
+        # TODO: Add regulation_mark and illustrator columns if needed
 
         results.append(card)
 
