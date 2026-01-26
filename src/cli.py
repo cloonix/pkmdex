@@ -2,6 +2,7 @@
 
 import argparse
 import asyncio
+import json
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -103,7 +104,7 @@ async def fetch_card_info(language: str, set_id: str, card_number: str) -> CardI
 
 
 async def handle_add(args: argparse.Namespace) -> int:
-    """Handle 'add' command.
+    """Handle 'add' command (v2 schema).
 
     Args:
         args: Parsed command-line arguments
@@ -118,14 +119,60 @@ async def handle_add(args: argparse.Namespace) -> int:
         return 1
 
     try:
-        # Fetch card info with specified language
-        card_info = await fetch_card_info(language, set_id, card_number)
+        tcgdex_id = f"{set_id}-{card_number}"
+
+        # Step 1: Fetch English card data (canonical) - get raw response for extra fields
+        api_en = api.get_api("en")
+        card_info_en = await api_en.get_card(set_id, card_number)
+
+        # Get raw API response to extract stage and category
+        # (CardInfo model doesn't include these, but raw API does)
+        raw_response_en = await api_en.sdk.card.get(tcgdex_id)
+        stage = (
+            getattr(raw_response_en, "stage", None)
+            if hasattr(raw_response_en, "stage")
+            else None
+        )
+        category = (
+            getattr(raw_response_en, "category", None)
+            if hasattr(raw_response_en, "category")
+            else None
+        )
+
+        # Step 2: Store canonical English data in cards table
+        db.upsert_card(
+            tcgdex_id=card_info_en.tcgdex_id,
+            name=card_info_en.name,
+            set_id=set_id,
+            card_number=card_number,
+            rarity=card_info_en.rarity,
+            types=json.dumps(card_info_en.types) if card_info_en.types else None,
+            hp=card_info_en.hp,
+            stage=stage,
+            category=category,
+            image_url=card_info_en.image_url,
+            price_eur=None,  # TODO: Extract from card_info_en.pricing when available
+            price_usd=None,
+            legal_standard=None,  # TODO: Extract from raw_response_en.legal when available
+            legal_expanded=None,
+        )
+
+        # Step 3: Fetch and store localized name (if not English)
+        localized_name = card_info_en.name  # Default to English
+        if language != "en":
+            api_lang = api.get_api(language)
+            card_info_lang = await api_lang.get_card(set_id, card_number)
+            localized_name = card_info_lang.name
+            db.upsert_card_name(tcgdex_id, language, localized_name)
+        else:
+            # Store English name in card_names too for consistency
+            db.upsert_card_name(tcgdex_id, "en", card_info_en.name)
 
         # Validate variant is available (unless --force is used)
-        if not args.force and not card_info.available_variants.is_valid(variant):
-            available = ", ".join(card_info.available_variants.available_list())
+        if not args.force and not card_info_en.available_variants.is_valid(variant):
+            available = ", ".join(card_info_en.available_variants.available_list())
             print(
-                f"Error: Variant '{variant}' not available for {card_info.name} ({card_info.tcgdex_id})\n"
+                f"Error: Variant '{variant}' not available for {localized_name} ({tcgdex_id})\n"
                 f"Available variants: {available}\n"
                 f"Tip: If you have this physical card, use --force to override:\n"
                 f"     pkm add --force {args.card}",
@@ -134,27 +181,38 @@ async def handle_add(args: argparse.Namespace) -> int:
             return 1
 
         # Show warning if forcing an unlisted variant
-        if args.force and not card_info.available_variants.is_valid(variant):
+        if args.force and not card_info_en.available_variants.is_valid(variant):
             print(
-                f"⚠ Warning: Adding variant '{variant}' not listed in API for {card_info.name}",
+                f"⚠ Warning: Adding variant '{variant}' not listed in API for {localized_name}",
                 file=sys.stderr,
             )
 
-        # Add to collection
-        owned_card = db.add_card_variant(card_info.tcgdex_id, variant, language)
+        # Step 4: Get current quantity before adding
+        current_card = db.get_v2_owned_cards()
+        current_qty = 0
+        for c in current_card:
+            if (
+                c["tcgdex_id"] == tcgdex_id
+                and c["variant"] == variant
+                and c["language"] == language
+            ):
+                current_qty = c["quantity"]
+                break
 
-        if owned_card.quantity == 1:
-            print(
-                f"✓ Added: {card_info.name} ({card_info.tcgdex_id}) [{language}] - {variant}"
-            )
+        # Step 5: Add to owned_cards table
+        db.add_owned_card(tcgdex_id, variant, language, quantity=1)
+        new_qty = current_qty + 1
+
+        if new_qty == 1:
+            print(f"✓ Added: {localized_name} ({tcgdex_id}) [{language}] - {variant}")
         else:
             print(
-                f"✓ Updated: {card_info.name} ({card_info.tcgdex_id}) [{language}] - {variant} (qty: {owned_card.quantity})"
+                f"✓ Updated: {localized_name} ({tcgdex_id}) [{language}] - {variant} (qty: {new_qty})"
             )
 
         # Show image URL
-        if card_info.image_url:
-            print(f"  Image: {card_info.image_url}")
+        if card_info_en.image_url:
+            print(f"  Image: {card_info_en.image_url}")
 
         return 0
 
