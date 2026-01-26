@@ -1,5 +1,13 @@
 # Pokemon Card Collection Manager - Design Document
 
+> **⚠️ NOTE:** This document is being updated for v2 architecture. Some sections still reference v1 concepts (JSON files, card_cache table). See [docs/schema_v2.md](docs/schema_v2.md) for current v2 schema details.
+>
+> **v2 Key Changes:**
+> - All data in database (cards, card_names, owned_cards tables)
+> - No JSON file caching (database-only storage)
+> - Price tracking with sync command
+> - Migration script for v1→v2 upgrade
+
 ## Overview
 
 A CLI tool for managing Pokemon TCG card collections in 11 languages using the TCGdex API. The tool allows users to track their physical cards with support for different variants (normal, reverse, holo, etc.) and stores the collection in a configurable local SQLite database.
