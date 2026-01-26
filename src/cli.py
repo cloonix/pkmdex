@@ -907,40 +907,6 @@ def handle_setup(args: argparse.Namespace) -> int:
     print("  pkm setup --reset")
     return 0
 
-    # Reset to defaults
-    if args.reset:
-        default_config = config.reset_config()
-        print("✓ Configuration reset to defaults")
-        print(f"  Database path:  {default_config.db_path}")
-        print(f"  Backups path:   {default_config.backups_path}")
-        return 0
-
-    # Set custom database path
-    if args.path:
-        try:
-            new_config = config.setup_database_path(args.path)
-            print("✓ Configuration updated")
-            print(f"  Database path:  {new_config.db_path}")
-            print(f"  Backups path:   {new_config.backups_path}")
-            print(f"\nNote: Restart any running instances to use the new path.")
-            return 0
-        except ValueError as e:
-            print(f"Error: {e}", file=sys.stderr)
-            return 1
-
-    # No arguments - show help
-    print("Usage: pkm setup [--show | --reset | --path PATH]")
-    print("\nOptions:")
-    print("  --show         Show current configuration")
-    print("  --reset        Reset to default configuration")
-    print("  --path PATH    Set custom database directory or file path")
-    print("\nExamples:")
-    print("  pkm setup --show")
-    print("  pkm setup --path ~/Documents/pokemon")
-    print("  pkm setup --path /mnt/backup/pokemon/cards.db")
-    print("  pkm setup --reset")
-    return 0
-
 
 def handle_export(args: argparse.Namespace) -> int:
     """Handle 'export' command.
