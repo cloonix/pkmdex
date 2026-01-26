@@ -552,14 +552,14 @@ async def handle_info(args: argparse.Namespace) -> int:
             symbol = "✓" if available else "✗"
             print(f"  {symbol} {variant}")
 
-        # Show owned variants
-        owned = db.get_owned_cards()
-        owned_variants = [c for c in owned if c.tcgdex_id == card_info.tcgdex_id]
+        # Show owned variants (v2 schema)
+        owned = db.get_v2_owned_cards()
+        owned_variants = [c for c in owned if c["tcgdex_id"] == card_info.tcgdex_id]
 
         if owned_variants:
             print("\nIn Collection:")
             for card in owned_variants:
-                print(f"  • {card.variant}: {card.quantity}")
+                print(f"  • {card['variant']}: {card['quantity']}")
         else:
             print("\nNot in collection")
 
