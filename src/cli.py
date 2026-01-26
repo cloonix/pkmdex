@@ -1165,6 +1165,7 @@ def handle_analyze(args: argparse.Namespace) -> int:
         set_id=args.set,
         regulation=args.regulation,
         artist=args.artist,
+        name=args.name,
     )
 
     # Analyze collection
@@ -1218,11 +1219,11 @@ def handle_analyze(args: argparse.Namespace) -> int:
 
     # Show card list as table
     print(f"Collection Analysis ({len(results)} cards)")
-    print("─" * 118)
+    print("─" * 133)
     print(
-        f"{'ID':<12} {'Name':<30} {'Lang':<6} {'Stage':<10} {'Type':<12} {'HP':<4} {'Rarity':<18} {'Qty':<3}"
+        f"{'ID':<12} {'Name (Localized)':<45} {'Lang':<6} {'Stage':<10} {'Type':<12} {'HP':<4} {'Rarity':<18} {'Qty':<3}"
     )
-    print("─" * 118)
+    print("─" * 133)
 
     for card in results:
         stage_str = card.stage or "—"
@@ -1230,11 +1231,21 @@ def handle_analyze(args: argparse.Namespace) -> int:
         hp_str = str(card.hp) if card.hp else "—"
         rarity_str = card.rarity or "—"
 
+        # Show both English and localized name if different
+        if card.name != card.localized_name:
+            name_display = f"{card.name} ({card.localized_name})"
+        else:
+            name_display = card.name
+
+        # Truncate name if too long
+        if len(name_display) > 44:
+            name_display = name_display[:41] + "..."
+
         print(
-            f"{card.tcgdex_id:<12} {card.name[:30]:<30} {card.language:<6} {stage_str:<10} {type_str:<12} {hp_str:<4} {rarity_str:<18} {card.quantity:<3}"
+            f"{card.tcgdex_id:<12} {name_display:<45} {card.language:<6} {stage_str:<10} {type_str:<12} {hp_str:<4} {rarity_str:<18} {card.quantity:<3}"
         )
 
-    print("─" * 118)
+    print("─" * 133)
     print(f"Total: {len(results)} cards")
 
     return 0
@@ -1408,6 +1419,10 @@ def create_parser() -> argparse.ArgumentParser:
     analyze_parser.add_argument(
         "--artist",
         help="Filter by artist/illustrator name (partial match, case-insensitive)",
+    )
+    analyze_parser.add_argument(
+        "--name",
+        help="Filter by card name (partial match, case-insensitive, searches both English and localized names)",
     )
     analyze_parser.add_argument(
         "--stats", action="store_true", help="Show statistics instead of card list"

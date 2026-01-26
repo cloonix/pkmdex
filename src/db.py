@@ -462,13 +462,16 @@ def remove_owned_card(
 
 
 def get_v2_owned_cards(
-    set_id: Optional[str] = None, language: Optional[str] = None
+    set_id: Optional[str] = None,
+    language: Optional[str] = None,
+    name: Optional[str] = None,
 ) -> list[dict]:
     """Get owned cards with card data and localized names (v2 schema).
 
     Args:
         set_id: Optional set ID filter
         language: Optional language filter
+        name: Optional name filter (searches both English and localized names)
 
     Returns:
         List of dicts with owned card data + card metadata + localized name
@@ -510,6 +513,11 @@ def get_v2_owned_cards(
         if language:
             query += " AND o.language = ?"
             params.append(language)
+
+        if name:
+            query += " AND (c.name LIKE ? OR n.name LIKE ?)"
+            search_pattern = f"%{name}%"
+            params.extend([search_pattern, search_pattern])
 
         query += " ORDER BY c.set_id, c.card_number"
 

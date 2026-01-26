@@ -598,3 +598,123 @@ def test_analyze_collection_case_insensitive_filters(temp_db, temp_data_dir):
 
     results = analyzer.analyze_collection(AnalysisFilter(category="POKEMON"))
     assert len(results) == 2
+
+
+def test_analyze_collection_name_filter_english(temp_db, temp_data_dir):
+    """Test name filter with English name."""
+    # Setup cards
+    db.upsert_card("me01-001", "Charmander", "me01", "001", stage="Basic")
+    db.upsert_card("me01-002", "Squirtle", "me01", "002", stage="Basic")
+    db.upsert_card("me01-003", "Charizard", "me01", "003", stage="Stage2")
+    db.upsert_card_name("me01-001", "de", "Glumanda")
+    db.upsert_card_name("me01-002", "de", "Schiggy")
+    db.upsert_card_name("me01-003", "de", "Glurak")
+
+    # Add ownership
+    db.add_owned_card("me01-001", "normal", "de", 1)
+    db.add_owned_card("me01-002", "normal", "de", 1)
+    db.add_owned_card("me01-003", "normal", "de", 1)
+
+    # Search by partial English name
+    results = analyzer.analyze_collection(AnalysisFilter(name="Char"))
+    assert len(results) == 2  # Charmander and Charizard
+    names = {r.name for r in results}
+    assert "Charmander" in names
+    assert "Charizard" in names
+
+    # Search by exact English name
+    results = analyzer.analyze_collection(AnalysisFilter(name="Squirtle"))
+    assert len(results) == 1
+    assert results[0].name == "Squirtle"
+
+
+def test_analyze_collection_name_filter_german(temp_db, temp_data_dir):
+    """Test name filter with German (localized) name."""
+    # Setup cards
+    db.upsert_card("me01-001", "Charmander", "me01", "001", stage="Basic")
+    db.upsert_card("me01-002", "Squirtle", "me01", "002", stage="Basic")
+    db.upsert_card("me01-003", "Charizard", "me01", "003", stage="Stage2")
+    db.upsert_card_name("me01-001", "de", "Glumanda")
+    db.upsert_card_name("me01-002", "de", "Schiggy")
+    db.upsert_card_name("me01-003", "de", "Glurak")
+
+    # Add ownership
+    db.add_owned_card("me01-001", "normal", "de", 1)
+    db.add_owned_card("me01-002", "normal", "de", 1)
+    db.add_owned_card("me01-003", "normal", "de", 1)
+
+    # Search by partial German name
+    results = analyzer.analyze_collection(AnalysisFilter(name="Glu"))
+    assert len(results) == 2  # Glumanda (Charmander) and Glurak (Charizard)
+    names = {r.name for r in results}
+    assert "Charmander" in names
+    assert "Charizard" in names
+
+    # Search by exact German name
+    results = analyzer.analyze_collection(AnalysisFilter(name="Schiggy"))
+    assert len(results) == 1
+    assert results[0].name == "Squirtle"
+    assert results[0].localized_name == "Schiggy"
+
+
+def test_analyze_collection_name_filter_case_insensitive(temp_db, temp_data_dir):
+    """Test name filter is case-insensitive."""
+    # Setup cards
+    db.upsert_card("me01-001", "Charmander", "me01", "001")
+    db.upsert_card_name("me01-001", "de", "Glumanda")
+    db.add_owned_card("me01-001", "normal", "de", 1)
+
+    # Test various cases
+    results = analyzer.analyze_collection(AnalysisFilter(name="GLUMANDA"))
+    assert len(results) == 1
+
+    results = analyzer.analyze_collection(AnalysisFilter(name="glumanda"))
+    assert len(results) == 1
+
+    results = analyzer.analyze_collection(AnalysisFilter(name="CHARMANDER"))
+    assert len(results) == 1
+
+    results = analyzer.analyze_collection(AnalysisFilter(name="charmander"))
+    assert len(results) == 1
+
+
+def test_analyze_collection_name_filter_combined(temp_db, temp_data_dir):
+    """Test name filter combined with other filters."""
+    # Setup cards
+    db.upsert_card("me01-001", "Charmander", "me01", "001", stage="Basic", types='["Fire"]')
+    db.upsert_card("me01-002", "Charmeleon", "me01", "002", stage="Stage1", types='["Fire"]')
+    db.upsert_card("me01-003", "Squirtle", "me01", "003", stage="Basic", types='["Water"]')
+    db.upsert_card_name("me01-001", "de", "Glumanda")
+    db.upsert_card_name("me01-002", "de", "Glutexo")
+    db.upsert_card_name("me01-003", "de", "Schiggy")
+
+    db.add_owned_card("me01-001", "normal", "de", 1)
+    db.add_owned_card("me01-002", "normal", "de", 1)
+    db.add_owned_card("me01-003", "normal", "de", 1)
+
+    # Search by name + stage
+    results = analyzer.analyze_collection(AnalysisFilter(name="Char", stage="Basic"))
+    assert len(results) == 1
+    assert results[0].name == "Charmander"
+
+    # Search by German name + type
+    results = analyzer.analyze_collection(AnalysisFilter(name="Glu", type="Fire"))
+    assert len(results) == 2  # Glumanda and Glutexo
+
+    # Search with no matches
+    results = analyzer.analyze_collection(AnalysisFilter(name="Pikachu"))
+    assert len(results) == 0
+
+
+def test_analyze_collection_name_filter_localized_name_populated(temp_db, temp_data_dir):
+    """Test that localized_name is correctly populated in results."""
+    # Setup cards
+    db.upsert_card("me01-001", "Charmander", "me01", "001")
+    db.upsert_card_name("me01-001", "de", "Glumanda")
+    db.add_owned_card("me01-001", "normal", "de", 1)
+
+    results = analyzer.analyze_collection(AnalysisFilter(name="Charmander"))
+    assert len(results) == 1
+    assert results[0].name == "Charmander"
+    assert results[0].localized_name == "Glumanda"
+    assert results[0].language == "de"

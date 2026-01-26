@@ -22,6 +22,7 @@ class AnalysisFilter:
     set_id: Optional[str] = None
     regulation: Optional[str] = None
     artist: Optional[str] = None
+    name: Optional[str] = None  # Search both English and localized names
 
 
 @dataclass
@@ -30,6 +31,7 @@ class CardAnalysis:
 
     tcgdex_id: str
     name: str  # English name from raw JSON
+    localized_name: str  # Localized name based on card's language
     language: str
     set_name: str
     stage: Optional[str]
@@ -80,6 +82,7 @@ def load_card_with_ownership(
     card = CardAnalysis(
         tcgdex_id=tcgdex_id,
         name=card_data["name"],  # English name for filtering
+        localized_name=localized_name,  # Localized name for display
         language=language,
         set_name=matching_cards[0].get("set_name", "Unknown"),
         stage=card_data.get("stage"),
@@ -105,7 +108,9 @@ def analyze_collection(filter_criteria: AnalysisFilter) -> list[CardAnalysis]:
     """
     # Get all owned cards with JOIN (v2 schema)
     owned_cards = db.get_v2_owned_cards(
-        set_id=filter_criteria.set_id, language=filter_criteria.language
+        set_id=filter_criteria.set_id,
+        language=filter_criteria.language,
+        name=filter_criteria.name,
     )
 
     results = []
@@ -137,6 +142,7 @@ def analyze_collection(filter_criteria: AnalysisFilter) -> list[CardAnalysis]:
         card = CardAnalysis(
             tcgdex_id=tcgdex_id,
             name=card_dict["name_en"],  # English name for filtering
+            localized_name=card_dict["display_name"],  # Localized name for display
             language=language,
             set_name=card_dict.get("set_name", "Unknown"),
             stage=card_dict.get("stage"),
