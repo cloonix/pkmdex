@@ -36,30 +36,67 @@ def get_db_path() -> Path:
     return cfg.db_path
 
 
-# Schema definition
+# Schema definition - v2 (Option B: Smart Sync)
 CREATE_SCHEMA = """
--- Owned cards table
+-- Table 1: Canonical card data (English only) with prices and legality
 CREATE TABLE IF NOT EXISTS cards (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    -- Identity
+    tcgdex_id TEXT PRIMARY KEY,
     set_id TEXT NOT NULL,
     card_number TEXT NOT NULL,
-    tcgdex_id TEXT NOT NULL,
-    variant TEXT NOT NULL,
-    language TEXT NOT NULL DEFAULT 'de',
-    quantity INTEGER DEFAULT 1,
-    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(tcgdex_id, variant, language)
+    
+    -- Card information (English only)
+    name TEXT NOT NULL,
+    rarity TEXT,
+    types TEXT,              -- JSON array: ["Grass", "Poison"]
+    hp INTEGER,
+    stage TEXT,              -- Basic, Stage1, Stage2, ex, VMAX, etc.
+    category TEXT,           -- Pokémon, Trainer, Energy
+    
+    -- Media
+    image_url TEXT,
+    
+    -- Pricing (from TCGdex API)
+    price_eur REAL,
+    price_usd REAL,
+    
+    -- Legality (from TCGdex API)
+    legal_standard BOOLEAN,
+    legal_expanded BOOLEAN,
+    
+    -- Metadata
+    last_synced TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_set_id ON cards(set_id);
-CREATE INDEX IF NOT EXISTS idx_tcgdex_id ON cards(tcgdex_id);
-CREATE INDEX IF NOT EXISTS idx_language ON cards(language);
+CREATE INDEX IF NOT EXISTS idx_cards_set_id ON cards(set_id);
+CREATE INDEX IF NOT EXISTS idx_cards_synced ON cards(last_synced);
 
--- Composite index for analyzer lookups
-CREATE INDEX IF NOT EXISTS idx_cards_lookup ON cards(tcgdex_id, language);
+-- Table 2: Localized card names (name-only translations)
+CREATE TABLE IF NOT EXISTS card_names (
+    tcgdex_id TEXT NOT NULL,
+    language TEXT NOT NULL,   -- ISO 639-1: de, fr, es, en, etc.
+    name TEXT NOT NULL,
+    
+    PRIMARY KEY (tcgdex_id, language),
+    FOREIGN KEY (tcgdex_id) REFERENCES cards(tcgdex_id) ON DELETE CASCADE
+);
 
--- Set information cache
+-- Table 3: User's owned cards (tracks ownership + language of physical card)
+CREATE TABLE IF NOT EXISTS owned_cards (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tcgdex_id TEXT NOT NULL,
+    variant TEXT NOT NULL,
+    language TEXT NOT NULL,   -- Language of physical card owned
+    quantity INTEGER DEFAULT 1,
+    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    UNIQUE(tcgdex_id, variant, language),
+    FOREIGN KEY (tcgdex_id) REFERENCES cards(tcgdex_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_owned_tcgdex ON owned_cards(tcgdex_id);
+
+-- Set information cache (unchanged from v1)
 CREATE TABLE IF NOT EXISTS set_cache (
     set_id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
