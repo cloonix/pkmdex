@@ -75,6 +75,27 @@ def build_tcgdex_id(set_id: str, card_number: str) -> str:
     return db.build_tcgdex_id(set_id, card_number)
 
 
+def get_display_name(tcgdex_id: str, language: str) -> str:
+    """Get localized card name with English fallback.
+
+    Args:
+        tcgdex_id: Full TCGdex ID
+        language: Preferred language code
+
+    Returns:
+        Localized card name, or English name if not available,
+        or tcgdex_id if card not found
+    """
+    # Try localized name first
+    card_name_local = db.get_card_name(tcgdex_id, language)
+    if card_name_local:
+        return card_name_local
+
+    # Fallback to English name from cards table
+    card_data = db.get_card(tcgdex_id)
+    return card_data["name"] if card_data else tcgdex_id
+
+
 async def fetch_card_info(language: str, set_id: str, card_number: str) -> CardInfo:
     """Fetch card from API or cache.
 
@@ -251,14 +272,8 @@ async def handle_rm(args: argparse.Namespace) -> int:
         card_number = card_number.strip()
         tcgdex_id = build_tcgdex_id(set_id, card_number)
 
-        # Get card name from DB (v2 schema)
-        card_name_local = db.get_card_name(tcgdex_id, language)
-        if not card_name_local:
-            # Fallback to English name
-            card_data = db.get_card(tcgdex_id)
-            card_name = card_data["name"] if card_data else tcgdex_id
-        else:
-            card_name = card_name_local
+        # Get card name for display
+        card_name = get_display_name(tcgdex_id, language)
 
         # Remove all variants for this language
         # Get all owned variants for this card+language
@@ -292,14 +307,8 @@ async def handle_rm(args: argparse.Namespace) -> int:
 
     tcgdex_id = build_tcgdex_id(set_id, card_number)
 
-    # Get card name from DB (v2 schema)
-    card_name_local = db.get_card_name(tcgdex_id, language)
-    if not card_name_local:
-        # Fallback to English name
-        card_data = db.get_card(tcgdex_id)
-        card_name = card_data["name"] if card_data else tcgdex_id
-    else:
-        card_name = card_name_local
+    # Get card name for display
+    card_name = get_display_name(tcgdex_id, language)
 
     # Remove the variant
     result = db.remove_owned_card(tcgdex_id, variant, language, quantity=1)
