@@ -67,6 +67,10 @@ curl -fsSL https://raw.githubusercontent.com/cloonix/pkmdex/main/uninstall.sh | 
 pkm setup --show                     # Show current configuration
 pkm setup --path ~/Documents/pokemon # Set custom database path
 
+# Configure custom API (optional - for private TCGdex instances)
+pkm setup --api-url https://your-api.example.com
+pkm setup --api-url default          # Reset to default API
+
 # Search for a set ID (e.g., find what "MEG" is in the API)
 pkm sets mega
 
@@ -146,7 +150,7 @@ pkm <command> <lang>:<set_id>:<card_number>[:<variant>]
 
 | Command | Description | Example |
 |---------|-------------|---------|
-| `setup` | Configure database path and settings | `pkm setup --show` or `pkm setup --path ~/pokemon` |
+| `setup` | Configure database path and API URL | `pkm setup --show` or `pkm setup --api-url URL` |
 | `add` | Add a card to collection | `pkm add de:me01:136` or `pkm add de:me01:136:holo` |
 | `rm` | Remove a card from collection | `pkm rm de:me01:136` or `pkm rm --all de:me01:136` |
 | `list` | Display collection | `pkm list` or `pkm list de` or `pkm list me01` |
@@ -466,6 +470,48 @@ Default Locations (configurable with 'pkm setup'):
   Database:     ~/.pkmdex/pokedex.db
   Backups:      ~/.pkmdex/backups/
   Config:       ~/.config/pkmdex/config.json
+```
+
+## Configuration
+
+### Custom API Base URL
+
+You can configure a custom TCGdex API instance (useful for private deployments or testing):
+
+**Method 1: Using the setup command (persistent):**
+```bash
+pkm setup --api-url https://your-api.example.com
+pkm setup --api-url https://homer.tail150adf.ts.net:3443  # Tailscale example
+pkm setup --api-url default  # Reset to default
+```
+
+**Method 2: Using environment variable (temporary):**
+```bash
+export TCGDEX_API_URL="https://your-api.example.com"
+pkm sync  # Uses custom API
+
+# Or for a single command:
+TCGDEX_API_URL="https://your-api.example.com" pkm sync
+```
+
+**Priority:** Environment variable > Config file > Default (api.tcgdex.net)
+
+Check your current configuration:
+```bash
+pkm setup --show
+```
+
+### Custom Database Location
+
+```bash
+# Set custom database directory
+pkm setup --path ~/Documents/pokemon
+
+# Or set specific database file path
+pkm setup --path /mnt/backup/pokemon/cards.db
+
+# Reset to defaults
+pkm setup --reset
 ```
 
 ## Development

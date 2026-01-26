@@ -830,24 +830,82 @@ def handle_setup(args: argparse.Namespace) -> int:
         args: Parsed command-line arguments
 
     Returns:
-        Exit code (0 for success, 1 for error)
+        Exit code (0 for success)
     """
     # Show current configuration
     if args.show:
         current_config = config.load_config()
-        print("Current Configuration")
-        print("─" * 60)
-        print(f"Database path:  {current_config.db_path}")
-        print(f"Backups path:   {current_config.backups_path}")
-        print(f"Raw data path:  {current_config.raw_data_path}")
-        print(f"Config file:    {config.get_config_file()}")
+        print("Current configuration:")
+        print(f"  Config file:    {config.get_config_dir() / 'config.json'}")
+        print(f"  Database path:  {current_config.db_path}")
+        print(f"  Backups path:   {current_config.backups_path}")
+        print(f"  API base URL:   {current_config.api_base_url or '(default)'}")
 
-        # Check if using default
+        # Show effective API URL (considering env var)
+        effective_url = config.get_api_base_url()
+        if effective_url != current_config.api_base_url:
+            print(f"  Effective URL:  {effective_url} (from TCGDEX_API_URL env var)")
+
+        # Check if using defaults
         default_config = config.Config.default()
         if current_config.db_path == default_config.db_path:
             print("\n(Using default configuration)")
 
         return 0
+
+    # Reset to defaults
+    if args.reset:
+        default_config = config.reset_config()
+        print("✓ Configuration reset to defaults")
+        print(f"  Database path:  {default_config.db_path}")
+        print(f"  Backups path:   {default_config.backups_path}")
+        print(f"  API base URL:   (default)")
+        return 0
+
+    # Set custom API URL
+    if args.api_url:
+        current_config = config.load_config()
+        current_config.api_base_url = (
+            args.api_url if args.api_url != "default" else None
+        )
+        config.save_config(current_config)
+
+        if args.api_url == "default":
+            print("✓ API URL reset to default")
+        else:
+            print("✓ Custom API URL configured")
+            print(f"  API base URL:   {args.api_url}")
+        print("\nNote: Restart any running instances to use the new API.")
+        return 0
+
+    # Set custom database path
+    if args.path:
+        try:
+            new_config = config.setup_database_path(args.path)
+            print("✓ Configuration updated")
+            print(f"  Database path:  {new_config.db_path}")
+            print(f"  Backups path:   {new_config.backups_path}")
+            print(f"\nNote: Restart any running instances to use the new path.")
+            return 0
+        except ValueError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+
+    # No arguments - show help
+    print("Usage: pkm setup [--show | --reset | --path PATH | --api-url URL]")
+    print("\nOptions:")
+    print("  --show           Show current configuration")
+    print("  --reset          Reset to default configuration")
+    print("  --path PATH      Set custom database directory or file path")
+    print("  --api-url URL    Set custom TCGdex API base URL (use 'default' to reset)")
+    print("\nExamples:")
+    print("  pkm setup --show")
+    print("  pkm setup --path ~/Documents/pokemon")
+    print("  pkm setup --path /mnt/backup/pokemon/cards.db")
+    print("  pkm setup --api-url https://homer.tail150adf.ts.net:3443")
+    print("  pkm setup --api-url default  # Reset to default API")
+    print("  pkm setup --reset")
+    return 0
 
     # Reset to defaults
     if args.reset:
@@ -1272,6 +1330,7 @@ def create_parser() -> argparse.ArgumentParser:
     setup_parser.add_argument(
         "--path", help="Set custom database directory or file path"
     )
+    setup_parser.add_argument("--api-url", help="Set custom TCGdex API base URL")
 
     # Export command
     export_parser = subparsers.add_parser(
