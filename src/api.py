@@ -53,8 +53,9 @@ class TCGdexAPI:
             else:
                 # Card data is a dataclass
                 card_data.rarity = getattr(en_card_data, "rarity", None)
-        except Exception:
+        except (PokedexAPIError, AttributeError, KeyError) as e:
             # If English fetch fails, use translated rarity (silently)
+            # Can fail if: API error, card not found, or rarity attribute missing
             pass
         self.language = language
 
