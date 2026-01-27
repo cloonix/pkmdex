@@ -849,6 +849,24 @@ def import_from_json(input_path: Path) -> dict:
     with open(input_path, "r", encoding="utf-8") as f:
         import_data = json.load(f)
 
+    return import_from_json_dict(import_data)
+
+
+def import_from_json_dict(import_data: dict) -> dict:
+    """Import collection from JSON dict, replacing existing database.
+
+    Supports both v1 and v2 export formats for backward compatibility.
+
+    Args:
+        import_data: Export data as dictionary
+
+    Returns:
+        Dict with import metadata (counts, etc.)
+
+    Raises:
+        ValueError: If JSON format is invalid
+    """
+
     # Validate format
     if "version" not in import_data:
         raise ValueError("Invalid export file format: missing version field")

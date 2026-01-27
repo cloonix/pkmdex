@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  pkmdex-web:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - PKMDEX_API_KEY=${PKMDEX_API_KEY:-your-secret-key-here}
+    volumes:
+      - ./data:/data
+    restart: unless-stopped

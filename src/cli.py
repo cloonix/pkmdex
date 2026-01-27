@@ -965,24 +965,114 @@ def handle_export(args: argparse.Namespace) -> int:
     Returns:
         Exit code (0 for success)
     """
+    cfg = config.load_config()
+
     # Generate filename with timestamp if not provided
     if args.output:
         output_path = Path(args.output)
     else:
         # Use backups directory from config
-        cfg = config.load_config()
         cfg.backups_path.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         output_path = cfg.backups_path / f"pkmdex_export_{timestamp}.json"
 
     try:
         result = db.export_to_json(output_path)
-        print(f"✓ Exported collection to: {result['file_path']}")
-        print(f"  Cards: {result['cards_count']}")
-        print(f"  Set cache: {result['set_cache_count']}")
+
+        if not args.quiet:
+            print(f"✓ Exported collection to: {result['file_path']}")
+            print(f"  Cards: {result['cards_count']}")
+            print(f"  Set cache: {result['set_cache_count']}")
+
+        # Push to web API if requested
+        if args.push:
+            return push_to_web_api(output_path, cfg, args.quiet)
+
         return 0
     except Exception as e:
-        print(f"Error exporting collection: {e}", file=sys.stderr)
+        if not args.quiet:
+            print(f"Error exporting collection: {e}", file=sys.stderr)
+        return 1
+
+
+def push_to_web_api(export_path: Path, cfg: config.Config, quiet: bool = False) -> int:
+    """Push export JSON to web API.
+
+    Args:
+        export_path: Path to export JSON file
+        cfg: Config object with web API settings
+        quiet: Suppress output
+
+    Returns:
+        Exit code (0 for success)
+    """
+    import json
+    import urllib.request
+    import urllib.error
+
+    # Validate config
+    if not cfg.web_api_url:
+        if not quiet:
+            print("Error: web_api_url not configured", file=sys.stderr)
+            print(
+                "Run: pkm config set web_api_url https://your-domain.com/api/sync",
+                file=sys.stderr,
+            )
+        return 1
+
+    if not cfg.web_api_key:
+        if not quiet:
+            print("Error: web_api_key not configured", file=sys.stderr)
+            print("Run: pkm config set web_api_key YOUR_SECRET_KEY", file=sys.stderr)
+        return 1
+
+    try:
+        # Read export file
+        with open(export_path, "r") as f:
+            export_data = json.load(f)
+
+        # Prepare request
+        request_data = json.dumps(export_data).encode("utf-8")
+        req = urllib.request.Request(
+            cfg.web_api_url,
+            data=request_data,
+            headers={
+                "Content-Type": "application/json",
+                "X-API-Key": cfg.web_api_key,
+            },
+            method="POST",
+        )
+
+        # Send request
+        if not quiet:
+            print(f"Pushing to {cfg.web_api_url}...")
+
+        with urllib.request.urlopen(req, timeout=30) as response:
+            result = json.loads(response.read().decode("utf-8"))
+
+        if not quiet:
+            print(f"✓ Synced to web app successfully")
+            print(f"  Cards imported: {result.get('cards_imported', 0)}")
+            print(f"  Owned cards: {result.get('owned_cards_imported', 0)}")
+            print(f"  Synced at: {result.get('synced_at', 'unknown')}")
+
+        return 0
+
+    except urllib.error.HTTPError as e:
+        if not quiet:
+            error_msg = e.read().decode("utf-8") if e.fp else str(e)
+            print(
+                f"Error pushing to web API (HTTP {e.code}): {error_msg}",
+                file=sys.stderr,
+            )
+        return 1
+    except urllib.error.URLError as e:
+        if not quiet:
+            print(f"Error connecting to web API: {e.reason}", file=sys.stderr)
+        return 1
+    except Exception as e:
+        if not quiet:
+            print(f"Error pushing to web API: {e}", file=sys.stderr)
         return 1
 
 
@@ -1034,6 +1124,67 @@ def handle_import(args: argparse.Namespace) -> int:
     except Exception as e:
         print(f"Error importing collection: {e}", file=sys.stderr)
         return 1
+
+
+def handle_config(args: argparse.Namespace) -> int:
+    """Handle 'config' command.
+
+    Args:
+        args: Parsed command-line arguments
+
+    Returns:
+        Exit code (0 for success)
+    """
+    cfg = config.load_config()
+
+    if not args.config_command or args.config_command == "show":
+        # Show all config
+        print("Current configuration:")
+        print(f"  db_path: {cfg.db_path}")
+        print(f"  backups_path: {cfg.backups_path}")
+        print(f"  raw_data_path: {cfg.raw_data_path}")
+        print(f"  api_base_url: {cfg.api_base_url or '(default)'}")
+        print(f"  web_api_url: {cfg.web_api_url or '(not set)'}")
+        print(f"  web_api_key: {'***' if cfg.web_api_key else '(not set)'}")
+        return 0
+
+    elif args.config_command == "get":
+        # Get specific value
+        value = getattr(cfg, args.key, None)
+        if value is None:
+            print(f"Error: Unknown config key: {args.key}", file=sys.stderr)
+            return 1
+
+        # Hide API key for security
+        if args.key == "web_api_key" and value:
+            print("***")
+        else:
+            print(value)
+        return 0
+
+    elif args.config_command == "set":
+        # Set value
+        if not hasattr(cfg, args.key):
+            print(f"Error: Unknown config key: {args.key}", file=sys.stderr)
+            print(
+                f"Valid keys: db_path, backups_path, raw_data_path, api_base_url, web_api_url, web_api_key",
+                file=sys.stderr,
+            )
+            return 1
+
+        # Convert path strings to Path objects
+        if args.key in ("db_path", "backups_path", "raw_data_path"):
+            setattr(cfg, args.key, Path(args.value).expanduser())
+        else:
+            setattr(cfg, args.key, args.value)
+
+        config.save_config(cfg)
+        print(
+            f"✓ Set {args.key} = {args.value if args.key != 'web_api_key' else '***'}"
+        )
+        return 0
+
+    return 1
 
 
 async def handle_cache(args: argparse.Namespace) -> int:
@@ -1359,6 +1510,16 @@ def create_parser() -> argparse.ArgumentParser:
         "--output",
         help="Output file path (default: pkmdex_export_YYYYMMDD_HHMMSS.json)",
     )
+    export_parser.add_argument(
+        "--push",
+        action="store_true",
+        help="Push export to web API (requires web_api_url and web_api_key in config)",
+    )
+    export_parser.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress output (useful for cron jobs)",
+    )
 
     # Import command
     import_parser = subparsers.add_parser(
@@ -1388,6 +1549,30 @@ def create_parser() -> argparse.ArgumentParser:
         choices=["cards", "sets", "all"],
         default="all",
         help="Which cache to clear (default: all)",
+    )
+
+    # Config command
+    config_parser = subparsers.add_parser(
+        "config", help="Manage configuration settings"
+    )
+    config_subparsers = config_parser.add_subparsers(dest="config_command")
+
+    # config set
+    config_set_parser = config_subparsers.add_parser(
+        "set", help="Set a configuration value"
+    )
+    config_set_parser.add_argument("key", help="Configuration key (e.g., web_api_url)")
+    config_set_parser.add_argument("value", help="Configuration value")
+
+    # config get
+    config_get_parser = config_subparsers.add_parser(
+        "get", help="Get a configuration value"
+    )
+    config_get_parser.add_argument("key", help="Configuration key")
+
+    # config show
+    config_show_parser = config_subparsers.add_parser(
+        "show", help="Show all configuration"
     )
 
     # Analyze command
@@ -1469,6 +1654,8 @@ def main() -> None:
         exit_code = handle_import(args)
     elif args.command == "cache":
         exit_code = asyncio.run(handle_cache(args))
+    elif args.command == "config":
+        exit_code = handle_config(args)
     elif args.command == "analyze":
         exit_code = handle_analyze(args)
     else:

@@ -18,6 +18,8 @@ class Config:
     backups_path: Path
     raw_data_path: Path
     api_base_url: Optional[str] = None  # Optional custom API base URL
+    web_api_url: Optional[str] = None  # Web app sync endpoint
+    web_api_key: Optional[str] = None  # API key for web sync
 
     @classmethod
     def default(cls) -> "Config":
@@ -40,6 +42,8 @@ class Config:
             "backups_path": str(self.backups_path),
             "raw_data_path": str(self.raw_data_path),
             "api_base_url": self.api_base_url,
+            "web_api_url": self.web_api_url,
+            "web_api_key": self.web_api_key,
         }
 
     @classmethod
@@ -57,6 +61,8 @@ class Config:
             backups_path=Path(data["backups_path"]),
             raw_data_path=Path(raw_data_path),
             api_base_url=data.get("api_base_url"),  # Optional field
+            web_api_url=data.get("web_api_url"),  # Optional field
+            web_api_key=data.get("web_api_key"),  # Optional field
         )
 
 
