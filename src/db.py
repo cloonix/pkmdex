@@ -33,8 +33,7 @@ def rows_to_dicts(cursor: sqlite3.Cursor) -> list[dict]:
     Returns:
         List of dictionaries, one per row
     """
-    columns = [desc[0] for desc in cursor.description]
-    return [dict(zip(columns, row)) for row in cursor.fetchall()]
+    return [row_to_dict(cursor, row) for row in cursor.fetchall()]
 
 
 # Database file location - can be overridden for testing
@@ -381,6 +380,36 @@ def get_card_name(tcgdex_id: str, language: str) -> Optional[str]:
         return row[0] if row else None
 
 
+def get_display_name(tcgdex_id: str, language: str) -> str:
+    """Get localized card name with English fallback.
+
+    Uses a single SQL query with COALESCE to try:
+    1. Localized name from card_names table
+    2. English name from cards table
+    3. tcgdex_id if card not found
+
+    Args:
+        tcgdex_id: Full TCGdex ID
+        language: Preferred language code
+
+    Returns:
+        Localized card name, or English name if not available,
+        or tcgdex_id if card not found
+    """
+    with get_connection() as conn:
+        cursor = conn.execute(
+            """
+            SELECT COALESCE(n.name, c.name, ?)
+            FROM cards c
+            LEFT JOIN card_names n ON c.tcgdex_id = n.tcgdex_id AND n.language = ?
+            WHERE c.tcgdex_id = ?
+            """,
+            (tcgdex_id, language, tcgdex_id),
+        )
+        row = cursor.fetchone()
+        return row[0] if row else tcgdex_id
+
+
 def get_languages_for_card(tcgdex_id: str) -> list[str]:
     """Get all languages owned for a specific card.
 
@@ -420,6 +449,26 @@ def add_owned_card(
             (tcgdex_id, variant, language, quantity, quantity),
         )
         conn.commit()
+
+
+def get_card_quantity(tcgdex_id: str, variant: str, language: str) -> int:
+    """Get quantity for a specific card variant.
+
+    Args:
+        tcgdex_id: Full TCGdex ID
+        variant: Variant name (normal, reverse, holo, firstEdition)
+        language: Language code
+
+    Returns:
+        Current quantity (0 if not owned)
+    """
+    with get_connection() as conn:
+        cursor = conn.execute(
+            "SELECT quantity FROM owned_cards WHERE tcgdex_id=? AND variant=? AND language=?",
+            (tcgdex_id, variant, language),
+        )
+        row = cursor.fetchone()
+        return row[0] if row else 0
 
 
 def remove_owned_card(
@@ -543,6 +592,19 @@ def get_owned_tcgdex_ids() -> list[str]:
             "SELECT DISTINCT tcgdex_id FROM owned_cards ORDER BY tcgdex_id"
         )
         return [row[0] for row in cursor.fetchall()]
+
+
+def get_owned_card_ids() -> list[tuple[str, str]]:
+    """Get all unique (tcgdex_id, language) pairs owned.
+
+    Returns:
+        List of (tcgdex_id, language) tuples
+    """
+    with get_connection() as conn:
+        cursor = conn.execute(
+            "SELECT DISTINCT tcgdex_id, language FROM owned_cards ORDER BY tcgdex_id, language"
+        )
+        return [(row[0], row[1]) for row in cursor.fetchall()]
 
 
 def get_v2_collection_stats() -> dict:

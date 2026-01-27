@@ -1,6 +1,6 @@
 # pkmdex - Pokemon Card Collection Manager
 
-A minimal CLI tool for managing Pokemon TCG collections in 11 languages using the TCGdex API.
+A Pokemon TCG collection manager with both CLI and web interface, supporting 11 languages using the TCGdex API.
 
 ## Features
 
@@ -10,6 +10,7 @@ A minimal CLI tool for managing Pokemon TCG collections in 11 languages using th
 - 🔍 Collection analysis with powerful filters
 - 📤 Export/import for backups
 - 💾 Local SQLite database (configurable location)
+- 🌐 **NEW:** Web interface for visual browsing and analytics
 
 ## Installation
 
@@ -23,7 +24,7 @@ Creates `pkm` command in `~/.local/bin/`. Re-run to update. [Uninstall script](h
 **Manual install:**
 ```bash
 git clone https://github.com/cloonix/pkmdex.git && cd pkmdex
-uv sync --all-extras  # or: pip install -e ".[dev]"
+uv sync --all-extras  # or: pip install -e ".[dev,web]"
 ```
 
 ## Quick Start
@@ -55,9 +56,26 @@ pkm import backup.json           # Restore from backup
 # Remove cards
 pkm rm de:me01:136               # Remove normal variant
 pkm rm --all de:me01:136         # Remove all variants
+
+# Launch web interface
+pkm-web                          # Opens browser at http://localhost:8080
 ```
 
-## Commands
+## Web Interface
+
+Launch the web UI with:
+```bash
+pkm-web
+```
+
+The web interface provides:
+- **Dashboard**: Collection overview with stats, value tracking, and breakdowns
+- **Gallery**: Visual card browser with filters (language, set, search)
+- **Analytics**: Interactive filtering and statistics (stage, type, rarity, HP ranges)
+
+All data comes from the same SQLite database used by the CLI - changes are instantly reflected in both interfaces.
+
+## CLI Commands
 
 | Command | Description |
 |---------|-------------|

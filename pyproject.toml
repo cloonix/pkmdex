@@ -20,9 +20,13 @@ dev = [
     "pytest-asyncio>=0.23.0",
     "mypy>=1.8.0",
 ]
+web = [
+    "plotly>=5.18.0",  # For interactive charts in analytics page
+]
 
 [project.scripts]
 pkm = "src.cli:main"
+pkm-web = "src.web:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
