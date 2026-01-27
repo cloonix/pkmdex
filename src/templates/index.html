@@ -204,6 +204,44 @@
             background: #f0f0f0;
         }
         
+        .modal-nav {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(255, 255, 255, 0.9);
+            border: none;
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            font-size: 24px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            transition: all 0.2s;
+            z-index: 10;
+        }
+        
+        .modal-nav:hover:not(:disabled) {
+            background: white;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            transform: translateY(-50%) scale(1.1);
+        }
+        
+        .modal-nav:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+        
+        .modal-nav-prev {
+            left: 10px;
+        }
+        
+        .modal-nav-next {
+            right: 10px;
+        }
+        
         .modal-image-container img {
             width: 100%;
             max-width: 320px;
@@ -500,6 +538,14 @@
             <div class="modal" x-show="selectedCard">
                 <button class="modal-close" @click="closeModal()">×</button>
                 
+                <!-- Navigation buttons -->
+                <button class="modal-nav modal-nav-prev" @click="previousCard()" :disabled="!hasPrevious()" title="Previous card (←)">
+                    ‹
+                </button>
+                <button class="modal-nav modal-nav-next" @click="nextCard()" :disabled="!hasNext()" title="Next card (→)">
+                    ›
+                </button>
+                
                 <template x-if="selectedCard">
                     <div class="modal-content">
                         <!-- Left Column: Card Image -->
@@ -742,11 +788,28 @@
                 },
                 loading: false,
                 selectedCard: null,
+                selectedCardIndex: -1,
                 
                 async init() {
                     await this.loadFilterOptions();
                     await this.loadStats();
                     await this.loadCards();
+                    
+                    // Add keyboard navigation
+                    document.addEventListener('keydown', (e) => {
+                        if (!this.selectedCard) return;
+                        
+                        if (e.key === 'ArrowLeft' || e.key === 'Left') {
+                            e.preventDefault();
+                            this.previousCard();
+                        } else if (e.key === 'ArrowRight' || e.key === 'Right') {
+                            e.preventDefault();
+                            this.nextCard();
+                        } else if (e.key === 'Escape') {
+                            e.preventDefault();
+                            this.closeModal();
+                        }
+                    });
                 },
                 
                 async loadFilterOptions() {
@@ -898,11 +961,35 @@
                 },
                 
                 openModal(cardGroup) {
+                    this.selectedCardIndex = this.cardGroups.findIndex(g => g.tcgdex_id === cardGroup.tcgdex_id);
                     this.selectedCard = cardGroup;
                 },
                 
                 closeModal() {
                     this.selectedCard = null;
+                    this.selectedCardIndex = -1;
+                },
+                
+                previousCard() {
+                    if (this.selectedCardIndex > 0) {
+                        this.selectedCardIndex--;
+                        this.selectedCard = this.cardGroups[this.selectedCardIndex];
+                    }
+                },
+                
+                nextCard() {
+                    if (this.selectedCardIndex < this.cardGroups.length - 1) {
+                        this.selectedCardIndex++;
+                        this.selectedCard = this.cardGroups[this.selectedCardIndex];
+                    }
+                },
+                
+                hasPrevious() {
+                    return this.selectedCardIndex > 0;
+                },
+                
+                hasNext() {
+                    return this.selectedCardIndex < this.cardGroups.length - 1;
                 }
             };
         }
