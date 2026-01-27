@@ -78,6 +78,27 @@ CREATE TABLE IF NOT EXISTS cards (
     hp INTEGER,
     stage TEXT,              -- Basic, Stage1, Stage2, ex, VMAX, etc.
     category TEXT,           -- Pokémon, Trainer, Energy
+    illustrator TEXT,
+    
+    -- Pokemon-specific fields
+    evolve_from TEXT,        -- Pokemon this evolves from
+    description TEXT,        -- Pokedex description
+    attacks TEXT,            -- JSON array of attack objects
+    abilities TEXT,          -- JSON array of ability objects
+    
+    -- Type effectiveness
+    weaknesses TEXT,         -- JSON array: [{"type": "Fire", "value": "×2"}]
+    resistances TEXT,        -- JSON array: [{"type": "Water", "value": "-30"}]
+    retreat_cost INTEGER,    -- Retreat cost (number of energy)
+    
+    -- Trainer/Energy specific
+    effect TEXT,             -- Card effect text (for trainers/energy)
+    trainer_type TEXT,       -- Supporter, Item, Stadium, Tool
+    energy_type TEXT,        -- Special, Basic
+    
+    -- Regulation and variants
+    regulation_mark TEXT,    -- Regulation mark (D, E, F, G, H, etc.)
+    variants TEXT,           -- JSON object: {"normal": true, "reverse": true, "holo": false}
     
     -- Media
     image_url TEXT,
@@ -218,6 +239,19 @@ def upsert_card(
     hp: Optional[int] = None,
     stage: Optional[str] = None,
     category: Optional[str] = None,
+    illustrator: Optional[str] = None,
+    evolve_from: Optional[str] = None,
+    description: Optional[str] = None,
+    attacks: Optional[str] = None,
+    abilities: Optional[str] = None,
+    weaknesses: Optional[str] = None,
+    resistances: Optional[str] = None,
+    retreat_cost: Optional[int] = None,
+    effect: Optional[str] = None,
+    trainer_type: Optional[str] = None,
+    energy_type: Optional[str] = None,
+    regulation_mark: Optional[str] = None,
+    variants: Optional[str] = None,
     image_url: Optional[str] = None,
     price_eur: Optional[float] = None,
     price_usd: Optional[float] = None,
@@ -236,6 +270,19 @@ def upsert_card(
         hp: Hit points
         stage: Card stage (Basic, Stage1, etc.)
         category: Card category (Pokémon, Trainer, Energy)
+        illustrator: Card illustrator name
+        evolve_from: Pokemon this evolves from
+        description: Pokedex description
+        attacks: JSON string of attack objects
+        abilities: JSON string of ability objects
+        weaknesses: JSON string of weakness objects
+        resistances: JSON string of resistance objects
+        retreat_cost: Number of energy needed to retreat
+        effect: Card effect text (for trainers/energy)
+        trainer_type: Supporter, Item, Stadium, Tool
+        energy_type: Special, Basic
+        regulation_mark: Regulation mark (D, E, F, G, H, etc.)
+        variants: JSON string of variant availability
         image_url: High-res image URL
         price_eur: Cardmarket average price in EUR
         price_usd: TCGPlayer market price in USD
@@ -247,8 +294,11 @@ def upsert_card(
             """
             INSERT INTO cards (
                 tcgdex_id, set_id, card_number, name, rarity, types, hp, stage,
-                category, image_url, price_eur, price_usd, legal_standard, legal_expanded
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                category, illustrator, evolve_from, description, attacks, abilities,
+                weaknesses, resistances, retreat_cost, effect, trainer_type, energy_type,
+                regulation_mark, variants, image_url, price_eur, price_usd, 
+                legal_standard, legal_expanded
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(tcgdex_id) DO UPDATE SET
                 name = excluded.name,
                 rarity = excluded.rarity,
@@ -256,6 +306,19 @@ def upsert_card(
                 hp = excluded.hp,
                 stage = excluded.stage,
                 category = excluded.category,
+                illustrator = excluded.illustrator,
+                evolve_from = excluded.evolve_from,
+                description = excluded.description,
+                attacks = excluded.attacks,
+                abilities = excluded.abilities,
+                weaknesses = excluded.weaknesses,
+                resistances = excluded.resistances,
+                retreat_cost = excluded.retreat_cost,
+                effect = excluded.effect,
+                trainer_type = excluded.trainer_type,
+                energy_type = excluded.energy_type,
+                regulation_mark = excluded.regulation_mark,
+                variants = excluded.variants,
                 image_url = excluded.image_url,
                 price_eur = excluded.price_eur,
                 price_usd = excluded.price_usd,
@@ -273,6 +336,19 @@ def upsert_card(
                 hp,
                 stage,
                 category,
+                illustrator,
+                evolve_from,
+                description,
+                attacks,
+                abilities,
+                weaknesses,
+                resistances,
+                retreat_cost,
+                effect,
+                trainer_type,
+                energy_type,
+                regulation_mark,
+                variants,
                 image_url,
                 price_eur,
                 price_usd,
@@ -525,6 +601,8 @@ def get_v2_owned_cards(
     category: Optional[str] = None,
     rarity: Optional[str] = None,
     stage: Optional[str] = None,
+    regulation_mark: Optional[str] = None,
+    legal_standard: Optional[bool] = None,
 ) -> list[dict]:
     """Get owned cards with card data and localized names (v2 schema).
 
@@ -536,6 +614,8 @@ def get_v2_owned_cards(
         category: Optional category filter (e.g., 'Pokémon', 'Trainer')
         rarity: Optional rarity filter (e.g., 'Common', 'Rare')
         stage: Optional stage filter (e.g., 'Basic', 'Stage1')
+        regulation_mark: Optional regulation mark filter (e.g., 'D', 'E', 'F', 'G', 'H')
+        legal_standard: Optional standard format legality filter (True for legal, False for not legal)
 
     Returns:
         List of dicts with owned card data + card metadata + localized name
@@ -558,6 +638,19 @@ def get_v2_owned_cards(
                 c.stage,
                 c.types,
                 c.category,
+                c.illustrator,
+                c.evolve_from,
+                c.description,
+                c.attacks,
+                c.abilities,
+                c.weaknesses,
+                c.resistances,
+                c.retreat_cost,
+                c.effect,
+                c.trainer_type,
+                c.energy_type,
+                c.regulation_mark,
+                c.variants,
                 c.image_url,
                 c.price_eur,
                 c.price_usd,
@@ -600,6 +693,14 @@ def get_v2_owned_cards(
             query += " AND LOWER(c.stage) = LOWER(?)"
             params.append(stage)
 
+        if regulation_mark:
+            query += " AND UPPER(c.regulation_mark) = UPPER(?)"
+            params.append(regulation_mark)
+
+        if legal_standard is not None:
+            query += " AND c.legal_standard = ?"
+            params.append(1 if legal_standard else 0)
+
         query += " ORDER BY c.set_id, c.card_number"
 
         cursor = conn.execute(query, params)
@@ -610,7 +711,7 @@ def get_filter_options() -> dict:
     """Get available filter options from owned cards.
 
     Returns:
-        Dict with lists of available types, categories, rarities, stages, and sets
+        Dict with lists of available types, categories, rarities, stages, sets, regulation marks, and legality options
     """
     with get_connection() as conn:
         # Get unique types (need to parse JSON arrays)
@@ -671,12 +772,23 @@ def get_filter_options() -> dict:
         """)
         sets = [row[0] for row in cursor.fetchall()]
 
+        # Get unique regulation marks
+        cursor = conn.execute("""
+            SELECT DISTINCT c.regulation_mark
+            FROM owned_cards o
+            JOIN cards c ON o.tcgdex_id = c.tcgdex_id
+            WHERE c.regulation_mark IS NOT NULL
+            ORDER BY c.regulation_mark
+        """)
+        regulation_marks = [row[0] for row in cursor.fetchall()]
+
         return {
             "types": sorted(list(types_set)),
             "categories": categories,
             "rarities": rarities,
             "stages": stages,
             "sets": sets,
+            "regulation_marks": regulation_marks,
         }
 
 

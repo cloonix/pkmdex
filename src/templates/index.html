@@ -175,7 +175,8 @@
         .modal {
             background: white;
             border-radius: 12px;
-            max-width: 600px;
+            max-width: 1100px;
+            width: 95vw;
             max-height: 90vh;
             overflow-y: auto;
             padding: 30px;
@@ -203,24 +204,139 @@
             background: #f0f0f0;
         }
         
-        .modal img {
+        .modal-image-container img {
             width: 100%;
-            max-width: 400px;
+            max-width: 320px;
             height: auto;
-            border-radius: 8px;
-            margin-bottom: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
             display: block;
-            margin-left: auto;
-            margin-right: auto;
+            transition: transform 0.2s;
         }
         
-        .modal-field {
-            margin-bottom: 12px;
+        .modal-image-container img:hover {
+            transform: scale(1.02);
         }
         
-        .modal-label {
+        .modal-content {
+            display: grid;
+            grid-template-columns: 320px 1fr;
+            gap: 30px;
+            align-items: start;
+        }
+        
+        @media (max-width: 900px) {
+            .modal-content {
+                grid-template-columns: 1fr;
+            }
+            
+            .modal-image-container {
+                max-width: 100%;
+            }
+        }
+        
+        .modal-image-container {
+            position: sticky;
+            top: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .modal-sections {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        
+        .modal-section {
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+        
+        .modal-section-title {
+            background: #f8f8f8;
+            padding: 8px 12px;
+            font-weight: 700;
+            font-size: 13px;
+            text-transform: uppercase;
+            color: #555;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        .modal-table {
+            width: 100%;
+        }
+        
+        .modal-table tr {
+            border-bottom: 1px solid #f0f0f0;
+        }
+        
+        .modal-table tr:last-child {
+            border-bottom: none;
+        }
+        
+        .modal-table td {
+            padding: 8px 12px;
+            font-size: 13px;
+        }
+        
+        .modal-table td:first-child {
             font-weight: 600;
-            margin-right: 8px;
+            color: #666;
+            width: 40%;
+            vertical-align: top;
+            background: #fafafa;
+        }
+        
+        .modal-table td:last-child {
+            color: #333;
+        }
+        
+        .type-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-right: 4px;
+            background: #e0e0e0;
+            color: #333;
+        }
+        
+        .attack-item, .ability-item {
+            margin-bottom: 8px;
+            padding: 8px;
+            background: #f9f9f9;
+            border-radius: 4px;
+        }
+        
+        .attack-item:last-child, .ability-item:last-child {
+            margin-bottom: 0;
+        }
+        
+        .attack-name, .ability-name {
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .attack-cost {
+            color: #666;
+            font-size: 12px;
+        }
+        
+        .attack-damage {
+            color: #d32f2f;
+            font-weight: 600;
+            margin-left: 8px;
+        }
+        
+        .attack-effect, .ability-effect {
+            color: #555;
+            font-size: 12px;
+            margin-top: 4px;
+            font-style: italic;
         }
         
         .loading {
@@ -329,6 +445,25 @@
                 </select>
             </div>
             
+            <div class="filter-group">
+                <label class="filter-label" for="regulationMark">Regulation Mark</label>
+                <select id="regulationMark" x-model="filters.regulationMark" @change="loadCards()">
+                    <option value="">All Marks</option>
+                    <template x-for="mark in filterOptions.regulation_marks" :key="mark">
+                        <option :value="mark" x-text="mark"></option>
+                    </template>
+                </select>
+            </div>
+            
+            <div class="filter-group">
+                <label class="filter-label" for="legalStandard">Standard Legal</label>
+                <select id="legalStandard" x-model="filters.legalStandard" @change="loadCards()">
+                    <option value="">All Cards</option>
+                    <option value="true">Legal Only</option>
+                    <option value="false">Not Legal</option>
+                </select>
+            </div>
+            
             <div class="filter-group" style="align-self: end;">
                 <button @click="clearFilters()" class="secondary">Clear Filters</button>
             </div>
@@ -366,61 +501,213 @@
                 <button class="modal-close" @click="closeModal()">×</button>
                 
                 <template x-if="selectedCard">
-                    <div>
-                        <img :src="getHighQualityUrl(selectedCard.cards[0], filters.language)" :alt="selectedCard.cards[0].display_name">
-                        
-                        <div class="modal-field">
-                            <span class="modal-label">Display Name:</span>
-                            <span x-text="selectedCard.cards[0].display_name"></span>
+                    <div class="modal-content">
+                        <!-- Left Column: Card Image -->
+                        <div class="modal-image-container">
+                            <img :src="getHighQualityUrl(selectedCard.cards[0], filters.language)" :alt="selectedCard.cards[0].display_name">
                         </div>
                         
-                        <div class="modal-field">
-                            <span class="modal-label">English Name:</span>
-                            <span x-text="selectedCard.cards[0].name_en"></span>
-                        </div>
-                        
-                        <div class="modal-field">
-                            <span class="modal-label">Set:</span>
-                            <span x-text="selectedCard.cards[0].set_id + ' #' + selectedCard.cards[0].card_number"></span>
-                        </div>
-                        
-                        <div class="modal-field">
-                            <span class="modal-label">TCGdex ID:</span>
-                            <span x-text="selectedCard.tcgdex_id"></span>
-                        </div>
-                        
-                        <div class="modal-field" x-show="selectedCard.cards[0].types">
-                            <span class="modal-label">Type:</span>
-                            <span x-text="parseTypes(selectedCard.cards[0].types)"></span>
-                        </div>
-                        
-                        <div class="modal-field" x-show="selectedCard.cards[0].hp">
-                            <span class="modal-label">HP:</span>
-                            <span x-text="selectedCard.cards[0].hp"></span>
-                        </div>
-                        
-                        <div class="modal-field" x-show="selectedCard.cards[0].stage">
-                            <span class="modal-label">Stage:</span>
-                            <span x-text="selectedCard.cards[0].stage"></span>
-                        </div>
-                        
-                        <div class="modal-field" x-show="selectedCard.cards[0].rarity">
-                            <span class="modal-label">Rarity:</span>
-                            <span x-text="selectedCard.cards[0].rarity"></span>
-                        </div>
-                        
-                        <div class="modal-field">
-                            <span class="modal-label">Your Collection:</span>
-                            <div style="margin-left: 20px;">
-                                <template x-for="card in selectedCard.cards">
-                                    <div x-text="'- ' + capitalize(card.variant) + ': ' + card.quantity + 'x'"></div>
-                                </template>
+                        <!-- Right Column: Card Information -->
+                        <div class="modal-sections">
+                            <!-- Basic Information -->
+                            <div class="modal-section">
+                                <div class="modal-section-title">Basic Information</div>
+                                <table class="modal-table">
+                                    <tr>
+                                        <td>Display Name</td>
+                                        <td x-text="selectedCard.cards[0].display_name"></td>
+                                    </tr>
+                                    <tr>
+                                        <td>English Name</td>
+                                        <td x-text="selectedCard.cards[0].name_en"></td>
+                                    </tr>
+                                    <tr>
+                                        <td>Set</td>
+                                        <td x-text="selectedCard.cards[0].set_id + ' #' + selectedCard.cards[0].card_number"></td>
+                                    </tr>
+                                    <tr>
+                                        <td>TCGdex ID</td>
+                                        <td x-text="selectedCard.tcgdex_id"></td>
+                                    </tr>
+                                    <tr x-show="selectedCard.cards[0].category">
+                                        <td>Category</td>
+                                        <td x-text="selectedCard.cards[0].category"></td>
+                                    </tr>
+                                    <tr x-show="selectedCard.cards[0].rarity">
+                                        <td>Rarity</td>
+                                        <td x-text="selectedCard.cards[0].rarity"></td>
+                                    </tr>
+                                    <tr x-show="selectedCard.cards[0].illustrator">
+                                        <td>Illustrator</td>
+                                        <td x-text="selectedCard.cards[0].illustrator"></td>
+                                    </tr>
+                                    <tr x-show="selectedCard.cards[0].regulation_mark">
+                                        <td>Regulation Mark</td>
+                                        <td x-text="selectedCard.cards[0].regulation_mark"></td>
+                                    </tr>
+                                </table>
                             </div>
-                        </div>
-                        
-                        <div class="modal-field" x-show="selectedCard.cards[0].price_eur">
-                            <span class="modal-label">Price:</span>
-                            <span x-text="'€' + selectedCard.cards[0].price_eur.toFixed(2)"></span>
+                            
+                            <!-- Pokemon Stats (only for Pokemon cards) -->
+                            <div class="modal-section" x-show="selectedCard.cards[0].category === 'Pokémon'">
+                                <div class="modal-section-title">Pokémon Stats</div>
+                                <table class="modal-table">
+                                    <tr x-show="selectedCard.cards[0].types">
+                                        <td>Type(s)</td>
+                                        <td>
+                                            <template x-for="type in parseTypesArray(selectedCard.cards[0].types)">
+                                                <span class="type-badge" x-text="type"></span>
+                                            </template>
+                                        </td>
+                                    </tr>
+                                    <tr x-show="selectedCard.cards[0].hp">
+                                        <td>HP</td>
+                                        <td x-text="selectedCard.cards[0].hp"></td>
+                                    </tr>
+                                    <tr x-show="selectedCard.cards[0].stage">
+                                        <td>Stage</td>
+                                        <td x-text="selectedCard.cards[0].stage"></td>
+                                    </tr>
+                                    <tr x-show="selectedCard.cards[0].evolve_from">
+                                        <td>Evolves From</td>
+                                        <td x-text="selectedCard.cards[0].evolve_from"></td>
+                                    </tr>
+                                    <tr x-show="selectedCard.cards[0].retreat_cost">
+                                        <td>Retreat Cost</td>
+                                        <td x-text="selectedCard.cards[0].retreat_cost"></td>
+                                    </tr>
+                                    <tr x-show="selectedCard.cards[0].description">
+                                        <td>Description</td>
+                                        <td x-text="selectedCard.cards[0].description"></td>
+                                    </tr>
+                                </table>
+                            </div>
+                            
+                            <!-- Abilities -->
+                            <div class="modal-section" x-show="selectedCard.cards[0].abilities">
+                                <div class="modal-section-title">Abilities</div>
+                                <table class="modal-table">
+                                    <tr>
+                                        <td colspan="2">
+                                            <template x-for="ability in parseAbilities(selectedCard.cards[0].abilities)">
+                                                <div class="ability-item">
+                                                    <div>
+                                                        <span class="ability-name" x-text="ability.name"></span>
+                                                        <span x-show="ability.type" x-text="' (' + ability.type + ')'" style="color: #666; font-size: 12px;"></span>
+                                                    </div>
+                                                    <div class="ability-effect" x-show="ability.effect" x-text="ability.effect"></div>
+                                                </div>
+                                            </template>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </div>
+                            
+                            <!-- Attacks -->
+                            <div class="modal-section" x-show="selectedCard.cards[0].attacks">
+                                <div class="modal-section-title">Attacks</div>
+                                <table class="modal-table">
+                                    <tr>
+                                        <td colspan="2">
+                                            <template x-for="attack in parseAttacks(selectedCard.cards[0].attacks)">
+                                                <div class="attack-item">
+                                                    <div>
+                                                        <span class="attack-name" x-text="attack.name"></span>
+                                                        <span class="attack-cost" x-show="attack.cost && attack.cost.length > 0" x-text="'[' + attack.cost.join(', ') + ']'"></span>
+                                                        <span class="attack-damage" x-show="attack.damage" x-text="attack.damage"></span>
+                                                    </div>
+                                                    <div class="attack-effect" x-show="attack.effect" x-text="attack.effect"></div>
+                                                </div>
+                                            </template>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </div>
+                            
+                            <!-- Weaknesses & Resistances -->
+                            <div class="modal-section" x-show="selectedCard.cards[0].weaknesses || selectedCard.cards[0].resistances">
+                                <div class="modal-section-title">Type Effectiveness</div>
+                                <table class="modal-table">
+                                    <tr x-show="selectedCard.cards[0].weaknesses">
+                                        <td>Weakness</td>
+                                        <td>
+                                            <template x-for="weakness in parseTypeEffects(selectedCard.cards[0].weaknesses)">
+                                                <span x-text="weakness.type + ' ' + weakness.value" style="margin-right: 8px;"></span>
+                                            </template>
+                                        </td>
+                                    </tr>
+                                    <tr x-show="selectedCard.cards[0].resistances">
+                                        <td>Resistance</td>
+                                        <td>
+                                            <template x-for="resistance in parseTypeEffects(selectedCard.cards[0].resistances)">
+                                                <span x-text="resistance.type + ' ' + resistance.value" style="margin-right: 8px;"></span>
+                                            </template>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </div>
+                            
+                            <!-- Trainer/Energy Effect -->
+                            <div class="modal-section" x-show="selectedCard.cards[0].effect">
+                                <div class="modal-section-title">Effect</div>
+                                <table class="modal-table">
+                                    <tr x-show="selectedCard.cards[0].trainer_type">
+                                        <td>Trainer Type</td>
+                                        <td x-text="selectedCard.cards[0].trainer_type"></td>
+                                    </tr>
+                                    <tr x-show="selectedCard.cards[0].energy_type">
+                                        <td>Energy Type</td>
+                                        <td x-text="selectedCard.cards[0].energy_type"></td>
+                                    </tr>
+                                    <tr>
+                                        <td>Effect Text</td>
+                                        <td x-text="selectedCard.cards[0].effect"></td>
+                                    </tr>
+                                </table>
+                            </div>
+                            
+                            <!-- Legality -->
+                            <div class="modal-section" x-show="selectedCard.cards[0].legal_standard !== null || selectedCard.cards[0].legal_expanded !== null">
+                                <div class="modal-section-title">Format Legality</div>
+                                <table class="modal-table">
+                                    <tr x-show="selectedCard.cards[0].legal_standard !== null">
+                                        <td>Standard</td>
+                                        <td x-text="selectedCard.cards[0].legal_standard ? 'Legal' : 'Not Legal'"></td>
+                                    </tr>
+                                    <tr x-show="selectedCard.cards[0].legal_expanded !== null">
+                                        <td>Expanded</td>
+                                        <td x-text="selectedCard.cards[0].legal_expanded ? 'Legal' : 'Not Legal'"></td>
+                                    </tr>
+                                </table>
+                            </div>
+                            
+                            <!-- Your Collection -->
+                            <div class="modal-section">
+                                <div class="modal-section-title">Your Collection</div>
+                                <table class="modal-table">
+                                    <template x-for="card in selectedCard.cards">
+                                        <tr>
+                                            <td x-text="capitalize(card.variant)"></td>
+                                            <td x-text="card.quantity + 'x'"></td>
+                                        </tr>
+                                    </template>
+                                </table>
+                            </div>
+                            
+                            <!-- Price -->
+                            <div class="modal-section" x-show="selectedCard.cards[0].price_eur || selectedCard.cards[0].price_usd">
+                                <div class="modal-section-title">Pricing</div>
+                                <table class="modal-table">
+                                    <tr x-show="selectedCard.cards[0].price_eur">
+                                        <td>EUR</td>
+                                        <td x-text="'€' + selectedCard.cards[0].price_eur.toFixed(2)"></td>
+                                    </tr>
+                                    <tr x-show="selectedCard.cards[0].price_usd">
+                                        <td>USD</td>
+                                        <td x-text="'$' + selectedCard.cards[0].price_usd.toFixed(2)"></td>
+                                    </tr>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 </template>
@@ -440,6 +727,7 @@
                     rarities: [],
                     stages: [],
                     sets: [],
+                    regulation_marks: [],
                 },
                 filters: {
                     language: 'de',
@@ -449,6 +737,8 @@
                     category: '',
                     rarity: '',
                     stage: '',
+                    regulationMark: '',
+                    legalStandard: '',
                 },
                 loading: false,
                 selectedCard: null,
@@ -490,6 +780,8 @@
                         if (this.filters.category) params.append('category', this.filters.category);
                         if (this.filters.rarity) params.append('rarity', this.filters.rarity);
                         if (this.filters.stage) params.append('stage', this.filters.stage);
+                        if (this.filters.regulationMark) params.append('regulation_mark', this.filters.regulationMark);
+                        if (this.filters.legalStandard) params.append('legal_standard', this.filters.legalStandard);
                         
                         const response = await fetch('/api/cards?' + params);
                         this.cards = await response.json();
@@ -508,6 +800,8 @@
                     this.filters.category = '';
                     this.filters.rarity = '';
                     this.filters.stage = '';
+                    this.filters.regulationMark = '';
+                    this.filters.legalStandard = '';
                     this.loadCards();
                 },
                 
@@ -549,6 +843,54 @@
                         }
                     }
                     return Array.isArray(types) ? types.join(', ') : types;
+                },
+                
+                parseTypesArray(types) {
+                    if (!types) return [];
+                    if (typeof types === 'string') {
+                        try {
+                            types = JSON.parse(types);
+                        } catch {
+                            return [];
+                        }
+                    }
+                    return Array.isArray(types) ? types : [];
+                },
+                
+                parseAttacks(attacks) {
+                    if (!attacks) return [];
+                    if (typeof attacks === 'string') {
+                        try {
+                            attacks = JSON.parse(attacks);
+                        } catch {
+                            return [];
+                        }
+                    }
+                    return Array.isArray(attacks) ? attacks : [];
+                },
+                
+                parseAbilities(abilities) {
+                    if (!abilities) return [];
+                    if (typeof abilities === 'string') {
+                        try {
+                            abilities = JSON.parse(abilities);
+                        } catch {
+                            return [];
+                        }
+                    }
+                    return Array.isArray(abilities) ? abilities : [];
+                },
+                
+                parseTypeEffects(effects) {
+                    if (!effects) return [];
+                    if (typeof effects === 'string') {
+                        try {
+                            effects = JSON.parse(effects);
+                        } catch {
+                            return [];
+                        }
+                    }
+                    return Array.isArray(effects) ? effects : [];
                 },
                 
                 capitalize(str) {

@@ -293,19 +293,122 @@ def get_current_quantity(tcgdex_id: str, variant: str, language: str) -> int:
     return db.get_card_quantity(tcgdex_id, variant, language)
 
 
-def extract_extra_fields(raw_response) -> tuple[Optional[str], Optional[str]]:
-    """Extract stage and category from raw API response.
+def extract_all_fields(raw_response) -> dict:
+    """Extract all available fields from raw API response.
 
     Args:
         raw_response: Raw API response object from TCGdex SDK
 
     Returns:
-        Tuple of (stage, category) - both may be None
+        Dict with all extracted fields (None values for missing fields)
     """
-    return (
-        getattr(raw_response, "stage", None),
-        getattr(raw_response, "category", None),
-    )
+    # Extract simple fields
+    fields = {
+        "stage": getattr(raw_response, "stage", None),
+        "category": getattr(raw_response, "category", None),
+        "illustrator": getattr(raw_response, "illustrator", None),
+        "evolve_from": getattr(raw_response, "evolveFrom", None),
+        "description": getattr(raw_response, "description", None),
+        "regulation_mark": getattr(raw_response, "regulationMark", None),
+        "retreat_cost": getattr(raw_response, "retreat", None),
+        "effect": getattr(raw_response, "effect", None),
+    }
+
+    # Extract and serialize complex fields as JSON
+    attacks = getattr(raw_response, "attacks", None)
+    if attacks:
+        fields["attacks"] = json.dumps(
+            [
+                {
+                    "name": getattr(atk, "name", None),
+                    "cost": getattr(atk, "cost", []),
+                    "damage": getattr(atk, "damage", None),
+                    "effect": getattr(atk, "effect", None),
+                }
+                for atk in attacks
+            ]
+        )
+    else:
+        fields["attacks"] = None
+
+    abilities = getattr(raw_response, "abilities", None)
+    if abilities:
+        fields["abilities"] = json.dumps(
+            [
+                {
+                    "name": getattr(ab, "name", None),
+                    "type": getattr(ab, "type", None),
+                    "effect": getattr(ab, "effect", None),
+                }
+                for ab in abilities
+            ]
+        )
+    else:
+        fields["abilities"] = None
+
+    weaknesses = getattr(raw_response, "weaknesses", None)
+    if weaknesses:
+        fields["weaknesses"] = json.dumps(
+            [
+                {
+                    "type": getattr(w, "type", None),
+                    "value": getattr(w, "value", None),
+                }
+                for w in weaknesses
+            ]
+        )
+    else:
+        fields["weaknesses"] = None
+
+    resistances = getattr(raw_response, "resistances", None)
+    if resistances:
+        fields["resistances"] = json.dumps(
+            [
+                {
+                    "type": getattr(r, "type", None),
+                    "value": getattr(r, "value", None),
+                }
+                for r in resistances
+            ]
+        )
+    else:
+        fields["resistances"] = None
+
+    # Extract variants
+    variants = getattr(raw_response, "variants", None)
+    if variants:
+        fields["variants"] = json.dumps(
+            {
+                "normal": getattr(variants, "normal", False),
+                "reverse": getattr(variants, "reverse", False),
+                "holo": getattr(variants, "holo", False),
+                "firstEdition": getattr(variants, "firstEdition", False),
+            }
+        )
+    else:
+        fields["variants"] = None
+
+    # Extract item (trainer type)
+    item = getattr(raw_response, "item", None)
+    if item:
+        fields["trainer_type"] = getattr(item, "name", None)
+    else:
+        fields["trainer_type"] = None
+
+    # Extract energy type
+    energy_type = getattr(raw_response, "energyType", None)
+    fields["energy_type"] = energy_type
+
+    # Extract legal info
+    legal = getattr(raw_response, "legal", None)
+    if legal:
+        fields["legal_standard"] = getattr(legal, "standard", None)
+        fields["legal_expanded"] = getattr(legal, "expanded", None)
+    else:
+        fields["legal_standard"] = None
+        fields["legal_expanded"] = None
+
+    return fields
 
 
 async def fetch_and_store_card_metadata(
@@ -336,9 +439,9 @@ async def fetch_and_store_card_metadata(
     api_en = api.get_api("en")
     card_info_en = await api_en.get_card(set_id, card_number)
 
-    # Get raw API response to extract extra fields
+    # Get raw API response to extract all fields
     raw_response_en = await api_en.sdk.card.get(tcgdex_id)
-    stage, category = extract_extra_fields(raw_response_en)
+    extra_fields = extract_all_fields(raw_response_en)
 
     # Store canonical English data in cards table
     db.upsert_card(
@@ -349,13 +452,26 @@ async def fetch_and_store_card_metadata(
         rarity=card_info_en.rarity,
         types=json.dumps(card_info_en.types) if card_info_en.types else None,
         hp=card_info_en.hp,
-        stage=stage,
-        category=category,
+        stage=extra_fields["stage"],
+        category=extra_fields["category"],
+        illustrator=extra_fields["illustrator"],
+        evolve_from=extra_fields["evolve_from"],
+        description=extra_fields["description"],
+        attacks=extra_fields["attacks"],
+        abilities=extra_fields["abilities"],
+        weaknesses=extra_fields["weaknesses"],
+        resistances=extra_fields["resistances"],
+        retreat_cost=extra_fields["retreat_cost"],
+        effect=extra_fields["effect"],
+        trainer_type=extra_fields["trainer_type"],
+        energy_type=extra_fields["energy_type"],
+        regulation_mark=extra_fields["regulation_mark"],
+        variants=extra_fields["variants"],
         image_url=card_info_en.image_url,
         price_eur=None,  # TODO: Extract from pricing when available
         price_usd=None,
-        legal_standard=None,  # TODO: Extract from legal when available
-        legal_expanded=None,
+        legal_standard=extra_fields["legal_standard"],
+        legal_expanded=extra_fields["legal_expanded"],
     )
 
     # Fetch and store localized name
@@ -1089,18 +1205,9 @@ async def handle_sync(args: argparse.Namespace) -> int:
             api_en = api.get_api("en")
             card_info_en = await api_en.get_card(set_id, card_number)
 
-            # Get raw response for extra fields
+            # Get raw response to extract all fields
             raw_response = await api_en.sdk.card.get(tcgdex_id)
-            stage = (
-                getattr(raw_response, "stage", None)
-                if hasattr(raw_response, "stage")
-                else None
-            )
-            category = (
-                getattr(raw_response, "category", None)
-                if hasattr(raw_response, "category")
-                else None
-            )
+            extra_fields = extract_all_fields(raw_response)
 
             # TODO: Extract price from raw_response
             # For now, keep old price or set to None
@@ -1115,13 +1222,26 @@ async def handle_sync(args: argparse.Namespace) -> int:
                 rarity=card_info_en.rarity,
                 types=json.dumps(card_info_en.types) if card_info_en.types else None,
                 hp=card_info_en.hp,
-                stage=stage,
-                category=category,
+                stage=extra_fields["stage"],
+                category=extra_fields["category"],
+                illustrator=extra_fields["illustrator"],
+                evolve_from=extra_fields["evolve_from"],
+                description=extra_fields["description"],
+                attacks=extra_fields["attacks"],
+                abilities=extra_fields["abilities"],
+                weaknesses=extra_fields["weaknesses"],
+                resistances=extra_fields["resistances"],
+                retreat_cost=extra_fields["retreat_cost"],
+                effect=extra_fields["effect"],
+                trainer_type=extra_fields["trainer_type"],
+                energy_type=extra_fields["energy_type"],
+                regulation_mark=extra_fields["regulation_mark"],
+                variants=extra_fields["variants"],
                 image_url=card_info_en.image_url,
                 price_eur=new_price,
                 price_usd=None,
-                legal_standard=None,
-                legal_expanded=None,
+                legal_standard=extra_fields["legal_standard"],
+                legal_expanded=extra_fields["legal_expanded"],
             )
 
             # Track price changes

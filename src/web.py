@@ -72,6 +72,8 @@ async def get_cards(
     rarity: Optional[str] = None,
     stage: Optional[str] = None,
     name: Optional[str] = None,
+    regulation_mark: Optional[str] = None,
+    legal_standard: Optional[bool] = None,
 ) -> list[dict]:
     """Get owned cards with optional filters.
 
@@ -83,6 +85,8 @@ async def get_cards(
         rarity: Filter by rarity (e.g., 'Common', 'Rare', 'Ultra Rare')
         stage: Filter by stage (e.g., 'Basic', 'Stage1', 'Stage2')
         name: Search by card name (partial match, case-insensitive)
+        regulation_mark: Filter by regulation mark (e.g., 'D', 'E', 'F', 'G', 'H')
+        legal_standard: Filter by standard format legality (true for legal only, false for not legal)
 
     Returns:
         List of owned cards matching filters
@@ -95,6 +99,8 @@ async def get_cards(
         rarity=rarity,
         stage=stage,
         name=name,
+        regulation_mark=regulation_mark,
+        legal_standard=legal_standard,
     )
 
 
@@ -103,7 +109,7 @@ async def get_filter_options() -> dict:
     """Get available filter options from the collection.
 
     Returns:
-        Dict with available types, categories, rarities, stages, and sets
+        Dict with available types, categories, rarities, stages, sets, and regulation marks
     """
     return db.get_filter_options()
 
