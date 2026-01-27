@@ -388,12 +388,8 @@ def extract_all_fields(raw_response) -> dict:
     else:
         fields["variants"] = None
 
-    # Extract item (trainer type)
-    item = getattr(raw_response, "item", None)
-    if item:
-        fields["trainer_type"] = getattr(item, "name", None)
-    else:
-        fields["trainer_type"] = None
+    # Extract trainer type (for Trainer cards)
+    fields["trainer_type"] = getattr(raw_response, "trainerType", None)
 
     # Extract energy type
     energy_type = getattr(raw_response, "energyType", None)
