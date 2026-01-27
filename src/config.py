@@ -16,7 +16,6 @@ class Config:
 
     db_path: Path
     backups_path: Path
-    raw_data_path: Path
     api_base_url: Optional[str] = None  # Optional custom API base URL
 
     @classmethod
@@ -30,7 +29,6 @@ class Config:
         return cls(
             db_path=data_dir / "pokedex.db",
             backups_path=data_dir / "backups",
-            raw_data_path=data_dir / "raw_data",
         )
 
     def to_dict(self) -> dict:
@@ -38,24 +36,15 @@ class Config:
         return {
             "db_path": str(self.db_path),
             "backups_path": str(self.backups_path),
-            "raw_data_path": str(self.raw_data_path),
             "api_base_url": self.api_base_url,
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> "Config":
         """Create config from dictionary."""
-        # Handle old config files without raw_data_path
-        raw_data_path = data.get("raw_data_path")
-        if not raw_data_path:
-            # Default to same directory as database
-            db_path = Path(data["db_path"])
-            raw_data_path = db_path.parent / "raw_data"
-
         return cls(
             db_path=Path(data["db_path"]),
             backups_path=Path(data["backups_path"]),
-            raw_data_path=Path(raw_data_path),
             api_base_url=data.get("api_base_url"),  # Optional field
         )
 
@@ -170,14 +159,8 @@ def setup_database_path(db_path: str) -> Config:
     backups_dir = db_dir / "backups"
     backups_dir.mkdir(parents=True, exist_ok=True)
 
-    # Create raw_data subdirectory
-    raw_data_dir = db_dir / "raw_data"
-    raw_data_dir.mkdir(parents=True, exist_ok=True)
-
     # Create and save config
-    config = Config(
-        db_path=db_file, backups_path=backups_dir, raw_data_path=raw_data_dir
-    )
+    config = Config(db_path=db_file, backups_path=backups_dir)
     save_config(config)
 
     return config
@@ -190,7 +173,6 @@ def reset_config() -> Config:
         Default Config object.
     """
     config = Config.default()
-    config.raw_data_path.mkdir(parents=True, exist_ok=True)
     save_config(config)
     return config
 

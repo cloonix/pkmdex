@@ -63,17 +63,56 @@ def parse_card_input(card_str: str) -> tuple[str, str, str, str]:
     return language, set_id, card_number, variant
 
 
-def build_tcgdex_id(set_id: str, card_number: str) -> str:
-    """Build TCGdex ID from components. Delegates to db.build_tcgdex_id.
+def parse_card_input_flexible(
+    card_str: str, require_variant: bool = True
+) -> tuple[str, str, str, str | None]:
+    """Parse card input supporting both full format and legacy 2-part format.
 
     Args:
-        set_id: Set identifier
-        card_number: Card number
+        card_str: Input string (lang:set:card[:variant] or set:card for legacy)
+        require_variant: If True, return 'normal' as default variant. If False, return None.
 
     Returns:
-        Full TCGdex ID
+        Tuple of (language, set_id, card_number, variant)
+        variant will be None if require_variant=False and not provided
+
+    Raises:
+        ValueError: If format is invalid
     """
-    return db.build_tcgdex_id(set_id, card_number)
+    parts = card_str.split(":")
+
+    if len(parts) == 2:
+        # Legacy format: set:card (assume German)
+        set_id, card_number = parts
+        language = "de"
+        variant = "normal" if require_variant else None
+    elif len(parts) == 3:
+        # New format: lang:set:card (no variant)
+        language, set_id, card_number = parts
+        variant = "normal" if require_variant else None
+    elif len(parts) == 4:
+        # Full format: lang:set:card:variant
+        language, set_id, card_number, variant = parts
+    else:
+        raise ValueError(
+            f"Invalid format: {card_str}\n"
+            f"Expected: <lang>:<set_id>:<card_number>[:<variant>] or <set_id>:<card_number>\n"
+            f"Examples:\n"
+            f"  de:me01:136\n"
+            f"  me01:136 (uses German)"
+        )
+
+    # Normalize inputs
+    language = language.strip().lower()
+    set_id = set_id.strip().lower()
+    card_number = card_number.strip()
+    if variant:
+        variant = variant.strip().lower()
+        validate_variant(variant)
+
+    validate_language(language)
+
+    return language, set_id, card_number, variant
 
 
 def get_display_name(tcgdex_id: str, language: str) -> str:
@@ -108,15 +147,7 @@ def get_current_quantity(tcgdex_id: str, variant: str, language: str) -> int:
     Returns:
         Current quantity (0 if not owned)
     """
-    owned_cards = db.get_v2_owned_cards()
-    for card in owned_cards:
-        if (
-            card["tcgdex_id"] == tcgdex_id
-            and card["variant"] == variant
-            and card["language"] == language
-        ):
-            return card["quantity"]
-    return 0
+    return db.get_card_quantity(tcgdex_id, variant, language)
 
 
 def extract_extra_fields(raw_response) -> tuple[Optional[str], Optional[str]]:
@@ -128,15 +159,10 @@ def extract_extra_fields(raw_response) -> tuple[Optional[str], Optional[str]]:
     Returns:
         Tuple of (stage, category) - both may be None
     """
-    stage = (
-        getattr(raw_response, "stage", None) if hasattr(raw_response, "stage") else None
+    return (
+        getattr(raw_response, "stage", None),
+        getattr(raw_response, "category", None),
     )
-    category = (
-        getattr(raw_response, "category", None)
-        if hasattr(raw_response, "category")
-        else None
-    )
-    return stage, category
 
 
 async def fetch_and_store_card_metadata(
@@ -161,7 +187,7 @@ async def fetch_and_store_card_metadata(
     Raises:
         api.PokedexAPIError: If card cannot be fetched
     """
-    tcgdex_id = build_tcgdex_id(set_id, card_number)
+    tcgdex_id = db.build_tcgdex_id(set_id, card_number)
 
     # Fetch English card data (canonical)
     api_en = api.get_api("en")
@@ -325,7 +351,7 @@ async def handle_add(args: argparse.Namespace) -> int:
             return 1
 
         # Update ownership
-        tcgdex_id = build_tcgdex_id(set_id, card_number)
+        tcgdex_id = db.build_tcgdex_id(set_id, card_number)
         current_qty = get_current_quantity(tcgdex_id, variant, language)
         db.add_owned_card(tcgdex_id, variant, language, quantity=1)
         new_qty = current_qty + 1
@@ -359,29 +385,15 @@ async def handle_rm(args: argparse.Namespace) -> int:
     """
     # For --all flag, we only need lang:set:card (no variant)
     if args.all:
-        parts = args.card.split(":")
-        if len(parts) == 2:
-            # Legacy format: set:card (use default German)
-            set_id, card_number = parts
-            language = "de"
-        elif len(parts) == 3:
-            # New format: lang:set:card
-            language, set_id, card_number = parts
-        else:
-            print(
-                f"Error: Invalid format for --all: {args.card}\n"
-                f"Expected: <lang>:<set_id>:<card_number> or <set_id>:<card_number>\n"
-                f"Examples:\n"
-                f"  pkm rm --all de:me01:136\n"
-                f"  pkm rm --all me01:136 (uses German)",
-                file=sys.stderr,
+        try:
+            language, set_id, card_number, _ = parse_card_input_flexible(
+                args.card, require_variant=False
             )
+        except ValueError as e:
+            print(f"Error: {e}", file=sys.stderr)
             return 1
 
-        language = language.strip().lower()
-        set_id = set_id.strip().lower()
-        card_number = card_number.strip()
-        tcgdex_id = build_tcgdex_id(set_id, card_number)
+        tcgdex_id = db.build_tcgdex_id(set_id, card_number)
 
         # Get card name for display
         card_name = get_display_name(tcgdex_id, language)
@@ -416,7 +428,7 @@ async def handle_rm(args: argparse.Namespace) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    tcgdex_id = build_tcgdex_id(set_id, card_number)
+    tcgdex_id = db.build_tcgdex_id(set_id, card_number)
 
     # Get card name for display
     card_name = get_display_name(tcgdex_id, language)
@@ -596,32 +608,14 @@ async def handle_info(args: argparse.Namespace) -> int:
     """
     try:
         # Parse lang:set_id:card_number (no variant needed for info)
-        parts = args.card.split(":")
-        if len(parts) == 2:
-            # Legacy format: set_id:card_number (use default German)
-            set_id, card_number = parts
-            language = "de"
-        elif len(parts) == 3:
-            # New format: lang:set_id:card_number
-            language, set_id, card_number = parts
-        else:
-            raise ValueError(
-                f"Invalid format: {args.card}\n"
-                f"Expected: <lang>:<set_id>:<card_number> or <set_id>:<card_number>\n"
-                f"Examples:\n"
-                f"  de:me01:136\n"
-                f"  me01:136 (uses German)"
-            )
-
-        language = language.strip().lower()
-        set_id = set_id.strip().lower()
-        card_number = card_number.strip()
-
+        language, set_id, card_number, _ = parse_card_input_flexible(
+            args.card, require_variant=False
+        )
     except ValueError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    tcgdex_id = build_tcgdex_id(set_id, card_number)
+    tcgdex_id = db.build_tcgdex_id(set_id, card_number)
 
     # Show raw JSON if requested
     if args.raw:
