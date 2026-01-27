@@ -100,7 +100,10 @@ def parse_card_input(
 
     Supports multiple formats:
     - Full format: de:me01:136:normal or de:me01:136
-    - With context: 136 or 136:holo (uses context for language and set)
+    - With context:
+      - 136 (uses context for language and set)
+      - 136:holo (uses context for language and set, specify variant)
+      - me02:076:reverse (uses context language, override set and variant)
     - Multi-card: de:me01:136,137,138 (returns first card, caller should use parse_card_list)
 
     Args:
@@ -134,7 +137,18 @@ def parse_card_input(
         variant = "normal"
 
     elif len(parts) == 2:
-        # Format: 136:holo (card number with variant, using context)
+        # Could be: 136:holo (shorthand) OR set:card (ambiguous - prefer shorthand if context exists)
+        first_part = parts[0].strip().lower()
+
+        # Check if first part is a valid language - if so, it's incomplete format
+        if first_part in VALID_LANGUAGES:
+            raise ValueError(
+                f"Invalid format: {card_str}\n"
+                f"Expected: <lang>:<set_id>:<card_number>[:<variant>]\n"
+                f"Example: de:me01:136"
+            )
+
+        # Otherwise, treat as card:variant with context
         if not context or not context.is_valid():
             raise ValueError(
                 f"No context set. Use full format: <lang>:<set_id>:<card_number>:<variant>\n"
@@ -146,9 +160,30 @@ def parse_card_input(
         set_id = context.set_id  # type: ignore
 
     elif len(parts) == 3:
-        # Format: de:me01:136 (full format without variant)
-        language, set_id, card_number = parts
-        variant = "normal"  # Default variant
+        # Could be: de:me01:136 (full format) OR set:card:variant (shorthand with context)
+        first_part = parts[0].strip().lower()
+
+        # Check if first part is a valid language
+        if first_part in VALID_LANGUAGES:
+            # Full format: de:me01:136
+            language, set_id, card_number = parts
+            variant = "normal"
+        else:
+            # Shorthand format: set:card:variant or card:...:variant (using context)
+            # Actually, this is most likely set:card:variant when user has context
+            if not context or not context.is_valid():
+                raise ValueError(
+                    f"Invalid format: {card_str}\n"
+                    f"First part '{first_part}' is not a valid language.\n"
+                    f"Expected: <lang>:<set_id>:<card_number>\n"
+                    f"Valid languages: {', '.join(VALID_LANGUAGES)}"
+                )
+            # Treat as set:card:variant (override set in context)
+            set_id = parts[0].strip().lower()
+            card_number = parts[1].strip()
+            variant = parts[2].strip().lower()
+            language = context.language  # type: ignore
+            # Note: This allows changing set without changing language
 
     elif len(parts) == 4:
         # Format: de:me01:136:normal (full format with variant)
