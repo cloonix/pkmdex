@@ -15,7 +15,14 @@ class PokedexAPIError(Exception):
 
 
 # Error message templates for consistent UX
-ERROR_CARD_NOT_FOUND = "Card not found: {id}\nTry 'pkm sets' to browse available sets."
+ERROR_CARD_NOT_FOUND = """Card not found: {id}
+This could mean:
+- Card number doesn't exist in this set
+- Card number format is wrong (try without leading zeros for older sets)
+- Set doesn't have cards in language '{lang}' (try 'en' instead)
+
+Tip: Use 'pkm sets {set_id}' to see available cards in this set."""
+
 ERROR_SET_NOT_FOUND = (
     "Set not found: {set_id}\nTry 'pkm sets' to browse available sets."
 )
@@ -96,7 +103,12 @@ class TCGdexAPI:
 
             return CardInfo.from_api_response(card_data)
         except Exception as e:
-            raise PokedexAPIError(ERROR_SET_NOT_FOUND.format(set_id=set_id)) from e
+            # Use card-specific error message
+            tcgdex_id = f"{set_id}-{card_number}"
+            error_msg = ERROR_CARD_NOT_FOUND.format(
+                id=tcgdex_id, lang=self.language, set_id=set_id
+            )
+            raise PokedexAPIError(error_msg) from e
 
     async def get_card_by_id(self, tcgdex_id: str) -> CardInfo:
         """Fetch card by full TCGdex ID.

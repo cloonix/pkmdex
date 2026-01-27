@@ -171,12 +171,19 @@ def get_connection(
 def build_tcgdex_id(set_id: str, card_number: str) -> str:
     """Build TCGdex ID from set_id and card_number.
 
+    TCGdex API is inconsistent with leading zeros across different sets:
+    - Most modern sets use 3-digit padding (me01-001, svp-001)
+    - Older promo sets don't use padding (basep-1, basep-22)
+    - Some sets use alphanumeric IDs (bwp-BW01, dpp-DP01)
+
+    We preserve the card_number exactly as provided by the user or API.
+
     Args:
-        set_id: Set identifier (e.g., "me01")
-        card_number: Card number (e.g., "136")
+        set_id: Set identifier (e.g., "me01", "basep")
+        card_number: Card number (e.g., "136", "001", "BW01")
 
     Returns:
-        Full TCGdex ID (e.g., "me01-136")
+        Full TCGdex ID (e.g., "me01-136", "basep-22")
     """
     return f"{set_id}-{card_number}"
 
