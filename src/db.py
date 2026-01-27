@@ -1171,9 +1171,11 @@ def import_from_json_dict(import_data: dict) -> dict:
                     """
                     INSERT INTO cards 
                     (tcgdex_id, set_id, card_number, name, rarity, types, hp, stage, 
-                     category, image_url, price_eur, price_usd, legal_standard, 
-                     legal_expanded, last_synced)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     category, illustrator, evolve_from, description, attacks, abilities,
+                     weaknesses, resistances, retreat_cost, effect, trainer_type, 
+                     energy_type, regulation_mark, variants, image_url, price_eur, 
+                     price_usd, legal_standard, legal_expanded, last_synced)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         card["tcgdex_id"],
@@ -1185,6 +1187,19 @@ def import_from_json_dict(import_data: dict) -> dict:
                         card.get("hp"),
                         card.get("stage"),
                         card.get("category"),
+                        card.get("illustrator"),
+                        card.get("evolve_from"),
+                        card.get("description"),
+                        card.get("attacks"),
+                        card.get("abilities"),
+                        card.get("weaknesses"),
+                        card.get("resistances"),
+                        card.get("retreat_cost"),
+                        card.get("effect"),
+                        card.get("trainer_type"),
+                        card.get("energy_type"),
+                        card.get("regulation_mark"),
+                        card.get("variants"),
                         card.get("image_url"),
                         card.get("price_eur"),
                         card.get("price_usd"),
