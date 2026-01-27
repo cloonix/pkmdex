@@ -69,9 +69,22 @@
             margin-bottom: 20px;
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 12px;
+        }
+        
+        .filter-group {
             display: flex;
-            gap: 10px;
-            align-items: center;
+            flex-direction: column;
+            gap: 4px;
+        }
+        
+        .filter-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #555;
+            text-transform: uppercase;
         }
         
         select, input {
@@ -79,6 +92,30 @@
             border: 1px solid #ddd;
             border-radius: 4px;
             font-size: 14px;
+            width: 100%;
+        }
+        
+        button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            background: #007bff;
+            color: white;
+            transition: background 0.2s;
+        }
+        
+        button:hover {
+            background: #0056b3;
+        }
+        
+        button.secondary {
+            background: #6c757d;
+        }
+        
+        button.secondary:hover {
+            background: #545b62;
         }
         
         .gallery {
@@ -223,9 +260,9 @@
         
         <!-- Filters -->
         <div class="filters">
-            <label>
-                Language:
-                <select x-model="language" @change="loadCards()">
+            <div class="filter-group">
+                <label class="filter-label" for="language">Language</label>
+                <select id="language" x-model="filters.language" @change="loadCards()">
                     <option value="de">German</option>
                     <option value="en">English</option>
                     <option value="fr">French</option>
@@ -235,11 +272,66 @@
                     <option value="ja">Japanese</option>
                     <option value="ko">Korean</option>
                 </select>
-            </label>
-            <label>
-                Set ID:
-                <input type="text" x-model="setId" @input="loadCards()" placeholder="e.g., me01">
-            </label>
+            </div>
+            
+            <div class="filter-group">
+                <label class="filter-label" for="name">Name Search</label>
+                <input id="name" type="text" x-model="filters.name" @input="loadCards()" placeholder="Search cards...">
+            </div>
+            
+            <div class="filter-group">
+                <label class="filter-label" for="setId">Set ID</label>
+                <select id="setId" x-model="filters.setId" @change="loadCards()">
+                    <option value="">All Sets</option>
+                    <template x-for="set in filterOptions.sets" :key="set">
+                        <option :value="set" x-text="set"></option>
+                    </template>
+                </select>
+            </div>
+            
+            <div class="filter-group">
+                <label class="filter-label" for="type">Type</label>
+                <select id="type" x-model="filters.type" @change="loadCards()">
+                    <option value="">All Types</option>
+                    <template x-for="type in filterOptions.types" :key="type">
+                        <option :value="type" x-text="type"></option>
+                    </template>
+                </select>
+            </div>
+            
+            <div class="filter-group">
+                <label class="filter-label" for="category">Category</label>
+                <select id="category" x-model="filters.category" @change="loadCards()">
+                    <option value="">All Categories</option>
+                    <template x-for="cat in filterOptions.categories" :key="cat">
+                        <option :value="cat" x-text="cat"></option>
+                    </template>
+                </select>
+            </div>
+            
+            <div class="filter-group">
+                <label class="filter-label" for="rarity">Rarity</label>
+                <select id="rarity" x-model="filters.rarity" @change="loadCards()">
+                    <option value="">All Rarities</option>
+                    <template x-for="rarity in filterOptions.rarities" :key="rarity">
+                        <option :value="rarity" x-text="rarity"></option>
+                    </template>
+                </select>
+            </div>
+            
+            <div class="filter-group">
+                <label class="filter-label" for="stage">Stage</label>
+                <select id="stage" x-model="filters.stage" @change="loadCards()">
+                    <option value="">All Stages</option>
+                    <template x-for="stage in filterOptions.stages" :key="stage">
+                        <option :value="stage" x-text="stage"></option>
+                    </template>
+                </select>
+            </div>
+            
+            <div class="filter-group" style="align-self: end;">
+                <button @click="clearFilters()" class="secondary">Clear Filters</button>
+            </div>
         </div>
         
         <!-- Loading -->
@@ -247,11 +339,21 @@
             Loading cards...
         </div>
         
+        <!-- Results count -->
+        <div x-show="!loading && cardGroups.length > 0" style="text-align: center; margin-bottom: 15px; color: #666; font-size: 14px;">
+            Showing <span x-text="cardGroups.length"></span> unique card<span x-text="cardGroups.length !== 1 ? 's' : ''"></span>
+        </div>
+        
+        <!-- Empty state -->
+        <div x-show="!loading && cardGroups.length === 0" class="loading">
+            No cards found matching your filters.
+        </div>
+        
         <!-- Gallery -->
-        <div class="gallery" x-show="!loading">
+        <div class="gallery" x-show="!loading && cardGroups.length > 0">
             <template x-for="group in cardGroups" :key="group.tcgdex_id">
                 <div class="card" @click="openModal(group)">
-                    <img :src="getThumbnailUrl(group.cards[0], language)" :alt="group.cards[0].display_name" loading="lazy">
+                    <img :src="getThumbnailUrl(group.cards[0], filters.language)" :alt="group.cards[0].display_name" loading="lazy">
                     <div class="card-name" x-text="group.cards[0].display_name"></div>
                     <div class="card-qty" x-text="'Qty: ' + group.total_qty"></div>
                 </div>
@@ -265,7 +367,7 @@
                 
                 <template x-if="selectedCard">
                     <div>
-                        <img :src="getHighQualityUrl(selectedCard.cards[0], language)" :alt="selectedCard.cards[0].display_name">
+                        <img :src="getHighQualityUrl(selectedCard.cards[0], filters.language)" :alt="selectedCard.cards[0].display_name">
                         
                         <div class="modal-field">
                             <span class="modal-label">Display Name:</span>
@@ -332,14 +434,38 @@
                 stats: null,
                 cards: [],
                 cardGroups: [],
-                language: 'de',
-                setId: '',
+                filterOptions: {
+                    types: [],
+                    categories: [],
+                    rarities: [],
+                    stages: [],
+                    sets: [],
+                },
+                filters: {
+                    language: 'de',
+                    name: '',
+                    setId: '',
+                    type: '',
+                    category: '',
+                    rarity: '',
+                    stage: '',
+                },
                 loading: false,
                 selectedCard: null,
                 
                 async init() {
+                    await this.loadFilterOptions();
                     await this.loadStats();
                     await this.loadCards();
+                },
+                
+                async loadFilterOptions() {
+                    try {
+                        const response = await fetch('/api/filter-options');
+                        this.filterOptions = await response.json();
+                    } catch (error) {
+                        console.error('Failed to load filter options:', error);
+                    }
                 },
                 
                 async loadStats() {
@@ -354,10 +480,16 @@
                 async loadCards() {
                     this.loading = true;
                     try {
-                        const params = new URLSearchParams({ language: this.language });
-                        if (this.setId) {
-                            params.append('set_id', this.setId);
-                        }
+                        const params = new URLSearchParams();
+                        
+                        // Add all filter parameters
+                        if (this.filters.language) params.append('language', this.filters.language);
+                        if (this.filters.name) params.append('name', this.filters.name);
+                        if (this.filters.setId) params.append('set_id', this.filters.setId);
+                        if (this.filters.type) params.append('card_type', this.filters.type);
+                        if (this.filters.category) params.append('category', this.filters.category);
+                        if (this.filters.rarity) params.append('rarity', this.filters.rarity);
+                        if (this.filters.stage) params.append('stage', this.filters.stage);
                         
                         const response = await fetch('/api/cards?' + params);
                         this.cards = await response.json();
@@ -367,6 +499,16 @@
                     } finally {
                         this.loading = false;
                     }
+                },
+                
+                clearFilters() {
+                    this.filters.name = '';
+                    this.filters.setId = '';
+                    this.filters.type = '';
+                    this.filters.category = '';
+                    this.filters.rarity = '';
+                    this.filters.stage = '';
+                    this.loadCards();
                 },
                 
                 groupCards() {

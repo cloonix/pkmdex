@@ -64,9 +64,48 @@ async def get_stats() -> dict:
 
 
 @app.get("/api/cards")
-async def get_cards(language: str = "de", set_id: Optional[str] = None) -> list[dict]:
-    """Get owned cards with optional filters."""
-    return db.get_v2_owned_cards(language=language, set_id=set_id)
+async def get_cards(
+    language: str = "de",
+    set_id: Optional[str] = None,
+    card_type: Optional[str] = None,
+    category: Optional[str] = None,
+    rarity: Optional[str] = None,
+    stage: Optional[str] = None,
+    name: Optional[str] = None,
+) -> list[dict]:
+    """Get owned cards with optional filters.
+
+    Args:
+        language: Language code (e.g., 'de', 'en')
+        set_id: Filter by set ID
+        card_type: Filter by Pokemon type (e.g., 'Fire', 'Water')
+        category: Filter by category (e.g., 'Pokémon', 'Trainer', 'Energy')
+        rarity: Filter by rarity (e.g., 'Common', 'Rare', 'Ultra Rare')
+        stage: Filter by stage (e.g., 'Basic', 'Stage1', 'Stage2')
+        name: Search by card name (partial match, case-insensitive)
+
+    Returns:
+        List of owned cards matching filters
+    """
+    return db.get_v2_owned_cards(
+        language=language,
+        set_id=set_id,
+        card_type=card_type,
+        category=category,
+        rarity=rarity,
+        stage=stage,
+        name=name,
+    )
+
+
+@app.get("/api/filter-options")
+async def get_filter_options() -> dict:
+    """Get available filter options from the collection.
+
+    Returns:
+        Dict with available types, categories, rarities, stages, and sets
+    """
+    return db.get_filter_options()
 
 
 @app.post("/api/sync")

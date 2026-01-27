@@ -521,6 +521,10 @@ def get_v2_owned_cards(
     set_id: Optional[str] = None,
     language: Optional[str] = None,
     name: Optional[str] = None,
+    card_type: Optional[str] = None,
+    category: Optional[str] = None,
+    rarity: Optional[str] = None,
+    stage: Optional[str] = None,
 ) -> list[dict]:
     """Get owned cards with card data and localized names (v2 schema).
 
@@ -528,6 +532,10 @@ def get_v2_owned_cards(
         set_id: Optional set ID filter
         language: Optional language filter
         name: Optional name filter (searches both English and localized names)
+        card_type: Optional Pokemon type filter (e.g., 'Fire', 'Water')
+        category: Optional category filter (e.g., 'Pokémon', 'Trainer')
+        rarity: Optional rarity filter (e.g., 'Common', 'Rare')
+        stage: Optional stage filter (e.g., 'Basic', 'Stage1')
 
     Returns:
         List of dicts with owned card data + card metadata + localized name
@@ -571,14 +579,105 @@ def get_v2_owned_cards(
             params.append(language)
 
         if name:
-            query += " AND (c.name LIKE ? OR n.name LIKE ?)"
+            query += " AND (LOWER(c.name) LIKE LOWER(?) OR LOWER(n.name) LIKE LOWER(?))"
             search_pattern = f"%{name}%"
             params.extend([search_pattern, search_pattern])
+
+        if card_type:
+            # Card type is stored in JSON array, search within it
+            query += " AND c.types LIKE ?"
+            params.append(f'%"{card_type}"%')
+
+        if category:
+            query += " AND LOWER(c.category) = LOWER(?)"
+            params.append(category)
+
+        if rarity:
+            query += " AND LOWER(c.rarity) = LOWER(?)"
+            params.append(rarity)
+
+        if stage:
+            query += " AND LOWER(c.stage) = LOWER(?)"
+            params.append(stage)
 
         query += " ORDER BY c.set_id, c.card_number"
 
         cursor = conn.execute(query, params)
         return rows_to_dicts(cursor)
+
+
+def get_filter_options() -> dict:
+    """Get available filter options from owned cards.
+
+    Returns:
+        Dict with lists of available types, categories, rarities, stages, and sets
+    """
+    with get_connection() as conn:
+        # Get unique types (need to parse JSON arrays)
+        cursor = conn.execute("""
+            SELECT DISTINCT c.types
+            FROM owned_cards o
+            JOIN cards c ON o.tcgdex_id = c.tcgdex_id
+            WHERE c.types IS NOT NULL
+        """)
+        types_set = set()
+        for row in cursor.fetchall():
+            if row[0]:
+                try:
+                    import json
+
+                    types_list = json.loads(row[0])
+                    if isinstance(types_list, list):
+                        types_set.update(types_list)
+                except:
+                    pass
+
+        # Get unique categories
+        cursor = conn.execute("""
+            SELECT DISTINCT c.category
+            FROM owned_cards o
+            JOIN cards c ON o.tcgdex_id = c.tcgdex_id
+            WHERE c.category IS NOT NULL
+            ORDER BY c.category
+        """)
+        categories = [row[0] for row in cursor.fetchall()]
+
+        # Get unique rarities
+        cursor = conn.execute("""
+            SELECT DISTINCT c.rarity
+            FROM owned_cards o
+            JOIN cards c ON o.tcgdex_id = c.tcgdex_id
+            WHERE c.rarity IS NOT NULL
+            ORDER BY c.rarity
+        """)
+        rarities = [row[0] for row in cursor.fetchall()]
+
+        # Get unique stages
+        cursor = conn.execute("""
+            SELECT DISTINCT c.stage
+            FROM owned_cards o
+            JOIN cards c ON o.tcgdex_id = c.tcgdex_id
+            WHERE c.stage IS NOT NULL
+            ORDER BY c.stage
+        """)
+        stages = [row[0] for row in cursor.fetchall()]
+
+        # Get unique sets
+        cursor = conn.execute("""
+            SELECT DISTINCT c.set_id
+            FROM owned_cards o
+            JOIN cards c ON o.tcgdex_id = c.tcgdex_id
+            ORDER BY c.set_id
+        """)
+        sets = [row[0] for row in cursor.fetchall()]
+
+        return {
+            "types": sorted(list(types_set)),
+            "categories": categories,
+            "rarities": rarities,
+            "stages": stages,
+            "sets": sets,
+        }
 
 
 def get_owned_tcgdex_ids() -> list[str]:
