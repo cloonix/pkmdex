@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pokemon Card Collection</title>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        header {
+            background: white;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .stat-card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+        }
+        
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .filters {
+            background: white;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        select, input {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        .gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 15px;
+        }
+        
+        .card {
+            background: white;
+            padding: 10px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        
+        .card img {
+            width: 125px;
+            height: auto;
+            border-radius: 4px;
+            display: block;
+            margin: 0 auto;
+        }
+        
+        .card-name {
+            font-size: 12px;
+            font-weight: 600;
+            margin-top: 8px;
+            text-align: center;
+        }
+        
+        .card-qty {
+            font-size: 11px;
+            color: #666;
+            text-align: center;
+            margin-top: 4px;
+        }
+        
+        /* Modal */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            padding: 20px;
+        }
+        
+        .modal {
+            background: white;
+            border-radius: 12px;
+            max-width: 600px;
+            max-height: 90vh;
+            overflow-y: auto;
+            padding: 30px;
+            position: relative;
+        }
+        
+        .modal-close {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #666;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+        }
+        
+        .modal-close:hover {
+            background: #f0f0f0;
+        }
+        
+        .modal img {
+            width: 100%;
+            max-width: 400px;
+            height: auto;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: block;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        
+        .modal-field {
+            margin-bottom: 12px;
+        }
+        
+        .modal-label {
+            font-weight: 600;
+            margin-right: 8px;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            font-size: 18px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container" x-data="cardApp()" x-init="init()">
+        <!-- Header -->
+        <header>
+            <h1>🎴 Pokemon Card Collection</h1>
+        </header>
+        
+        <!-- Stats -->
+        <div class="stats" x-show="stats">
+            <div class="stat-card">
+                <div class="stat-label">Unique Cards</div>
+                <div class="stat-value" x-text="stats?.unique_cards || 0"></div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Total Cards</div>
+                <div class="stat-value" x-text="stats?.total_cards || 0"></div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Sets</div>
+                <div class="stat-value" x-text="stats?.sets_count || 0"></div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Total Value</div>
+                <div class="stat-value" x-text="'€' + (stats?.total_value_eur || 0).toFixed(2)"></div>
+            </div>
+        </div>
+        
+        <!-- Filters -->
+        <div class="filters">
+            <label>
+                Language:
+                <select x-model="language" @change="loadCards()">
+                    <option value="de">German</option>
+                    <option value="en">English</option>
+                    <option value="fr">French</option>
+                    <option value="es">Spanish</option>
+                    <option value="it">Italian</option>
+                    <option value="pt">Portuguese</option>
+                    <option value="ja">Japanese</option>
+                    <option value="ko">Korean</option>
+                </select>
+            </label>
+            <label>
+                Set ID:
+                <input type="text" x-model="setId" @input="loadCards()" placeholder="e.g., me01">
+            </label>
+        </div>
+        
+        <!-- Loading -->
+        <div class="loading" x-show="loading">
+            Loading cards...
+        </div>
+        
+        <!-- Gallery -->
+        <div class="gallery" x-show="!loading">
+            <template x-for="group in cardGroups" :key="group.tcgdex_id">
+                <div class="card" @click="openModal(group)">
+                    <img :src="getThumbnailUrl(group.cards[0], language)" :alt="group.cards[0].display_name" loading="lazy">
+                    <div class="card-name" x-text="group.cards[0].display_name"></div>
+                    <div class="card-qty" x-text="'Qty: ' + group.total_qty"></div>
+                </div>
+            </template>
+        </div>
+        
+        <!-- Modal -->
+        <div class="modal-overlay" x-show="selectedCard" @click.self="closeModal()" style="display: none;">
+            <div class="modal" x-show="selectedCard">
+                <button class="modal-close" @click="closeModal()">×</button>
+                
+                <template x-if="selectedCard">
+                    <div>
+                        <img :src="getHighQualityUrl(selectedCard.cards[0], language)" :alt="selectedCard.cards[0].display_name">
+                        
+                        <div class="modal-field">
+                            <span class="modal-label">Display Name:</span>
+                            <span x-text="selectedCard.cards[0].display_name"></span>
+                        </div>
+                        
+                        <div class="modal-field">
+                            <span class="modal-label">English Name:</span>
+                            <span x-text="selectedCard.cards[0].name_en"></span>
+                        </div>
+                        
+                        <div class="modal-field">
+                            <span class="modal-label">Set:</span>
+                            <span x-text="selectedCard.cards[0].set_id + ' #' + selectedCard.cards[0].card_number"></span>
+                        </div>
+                        
+                        <div class="modal-field">
+                            <span class="modal-label">TCGdex ID:</span>
+                            <span x-text="selectedCard.tcgdex_id"></span>
+                        </div>
+                        
+                        <div class="modal-field" x-show="selectedCard.cards[0].types">
+                            <span class="modal-label">Type:</span>
+                            <span x-text="parseTypes(selectedCard.cards[0].types)"></span>
+                        </div>
+                        
+                        <div class="modal-field" x-show="selectedCard.cards[0].hp">
+                            <span class="modal-label">HP:</span>
+                            <span x-text="selectedCard.cards[0].hp"></span>
+                        </div>
+                        
+                        <div class="modal-field" x-show="selectedCard.cards[0].stage">
+                            <span class="modal-label">Stage:</span>
+                            <span x-text="selectedCard.cards[0].stage"></span>
+                        </div>
+                        
+                        <div class="modal-field" x-show="selectedCard.cards[0].rarity">
+                            <span class="modal-label">Rarity:</span>
+                            <span x-text="selectedCard.cards[0].rarity"></span>
+                        </div>
+                        
+                        <div class="modal-field">
+                            <span class="modal-label">Your Collection:</span>
+                            <div style="margin-left: 20px;">
+                                <template x-for="card in selectedCard.cards">
+                                    <div x-text="'- ' + capitalize(card.variant) + ': ' + card.quantity + 'x'"></div>
+                                </template>
+                            </div>
+                        </div>
+                        
+                        <div class="modal-field" x-show="selectedCard.cards[0].price_eur">
+                            <span class="modal-label">Price:</span>
+                            <span x-text="'€' + selectedCard.cards[0].price_eur.toFixed(2)"></span>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        function cardApp() {
+            return {
+                stats: null,
+                cards: [],
+                cardGroups: [],
+                language: 'de',
+                setId: '',
+                loading: false,
+                selectedCard: null,
+                
+                async init() {
+                    await this.loadStats();
+                    await this.loadCards();
+                },
+                
+                async loadStats() {
+                    try {
+                        const response = await fetch('/api/stats');
+                        this.stats = await response.json();
+                    } catch (error) {
+                        console.error('Failed to load stats:', error);
+                    }
+                },
+                
+                async loadCards() {
+                    this.loading = true;
+                    try {
+                        const params = new URLSearchParams({ language: this.language });
+                        if (this.setId) {
+                            params.append('set_id', this.setId);
+                        }
+                        
+                        const response = await fetch('/api/cards?' + params);
+                        this.cards = await response.json();
+                        this.groupCards();
+                    } catch (error) {
+                        console.error('Failed to load cards:', error);
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+                
+                groupCards() {
+                    const grouped = {};
+                    for (const card of this.cards) {
+                        if (!grouped[card.tcgdex_id]) {
+                            grouped[card.tcgdex_id] = {
+                                tcgdex_id: card.tcgdex_id,
+                                cards: [],
+                                total_qty: 0
+                            };
+                        }
+                        grouped[card.tcgdex_id].cards.push(card);
+                        grouped[card.tcgdex_id].total_qty += card.quantity;
+                    }
+                    this.cardGroups = Object.values(grouped);
+                },
+                
+                getThumbnailUrl(card, lang) {
+                    if (!card.image_url) return '';
+                    return card.image_url
+                        .replace('/en/', '/' + lang + '/')
+                        .replace('/high.png', '/low.webp');
+                },
+                
+                getHighQualityUrl(card, lang) {
+                    if (!card.image_url) return '';
+                    return card.image_url.replace('/en/', '/' + lang + '/');
+                },
+                
+                parseTypes(types) {
+                    if (!types) return '';
+                    if (typeof types === 'string') {
+                        try {
+                            types = JSON.parse(types);
+                        } catch {
+                            return types;
+                        }
+                    }
+                    return Array.isArray(types) ? types.join(', ') : types;
+                },
+                
+                capitalize(str) {
+                    return str.charAt(0).toUpperCase() + str.slice(1);
+                },
+                
+                openModal(cardGroup) {
+                    this.selectedCard = cardGroup;
+                },
+                
+                closeModal() {
+                    this.selectedCard = null;
+                }
+            };
+        }
+    </script>
+</body>
+</html>
