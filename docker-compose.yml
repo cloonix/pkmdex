@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   pkmdex-web:
-    image: ghcr.io/cloonix/pkmdex:alpine  # Use pre-built image from GitHub
+    image: ghcr.io/cloonix/pkmdex:main  # Use pre-built image from GitHub
     # Alternatively, build locally:
     # build: .
     container_name: pkmdex-web
