@@ -5,7 +5,7 @@ Handles OS-specific config directories and user preferences.
 
 import json
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Optional
 
@@ -25,7 +25,7 @@ class Config:
         Uses ~/.local/share/pkmdex for data storage on Linux/macOS,
         or %LOCALAPPDATA%/pkmdex on Windows.
         """
-        data_dir = get_data_dir()
+        data_dir = _get_data_dir()
         return cls(
             db_path=data_dir / "pokedex.db",
             backups_path=data_dir / "backups",
@@ -45,47 +45,39 @@ class Config:
         return cls(
             db_path=Path(data["db_path"]),
             backups_path=Path(data["backups_path"]),
-            api_base_url=data.get("api_base_url"),  # Optional field
+            api_base_url=data.get("api_base_url"),
         )
 
 
-def get_config_dir() -> Path:
-    """Get OS-specific configuration directory.
+def _get_app_dir(subdir: str) -> Path:
+    """Get OS-specific app directory (config or data).
+
+    Args:
+        subdir: 'config' for config files, 'data' for data files
 
     Returns:
-        ~/.config/pkmdex on Linux/macOS
-        %APPDATA%/pkmdex on Windows
+        OS-specific directory path
     """
     if os.name == "nt":  # Windows
-        base = Path(os.environ.get("APPDATA", "~"))
+        base = Path(
+            os.environ.get("APPDATA" if subdir == "config" else "LOCALAPPDATA", "~")
+        )
     else:  # Linux/macOS
-        base = Path.home() / ".config"
+        base = Path.home() / (".config" if subdir == "config" else ".local/share")
 
-    config_dir = base / "pkmdex"
-    config_dir.mkdir(parents=True, exist_ok=True)
-    return config_dir
-
-
-def get_data_dir() -> Path:
-    """Get OS-specific data directory.
-
-    Returns:
-        ~/.local/share/pkmdex on Linux/macOS
-        %LOCALAPPDATA%/pkmdex on Windows
-    """
-    if os.name == "nt":  # Windows
-        base = Path(os.environ.get("LOCALAPPDATA", "~"))
-    else:  # Linux/macOS
-        base = Path.home() / ".local" / "share"
-
-    data_dir = base / "pkmdex"
-    data_dir.mkdir(parents=True, exist_ok=True)
-    return data_dir
+    app_dir = base / "pkmdex"
+    app_dir.mkdir(parents=True, exist_ok=True)
+    return app_dir
 
 
-def get_config_file() -> Path:
-    """Get path to configuration file."""
-    return get_config_dir() / "config.json"
+def _get_config_dir() -> Path:
+    """Get OS-specific configuration directory."""
+    return _get_app_dir("config")
+
+
+def _get_data_dir() -> Path:
+    """Get OS-specific data directory."""
+    return _get_app_dir("data")
 
 
 def load_config() -> Config:
@@ -94,13 +86,12 @@ def load_config() -> Config:
     Returns:
         Config object with user preferences or defaults.
     """
-    config_file = get_config_file()
+    config_file = _get_config_dir() / "config.json"
 
     if config_file.exists():
         try:
             with open(config_file, "r") as f:
-                data = json.load(f)
-            return Config.from_dict(data)
+                return Config.from_dict(json.load(f))
         except (json.JSONDecodeError, KeyError, ValueError):
             # If config is corrupted, fall back to default
             return Config.default()
@@ -114,9 +105,7 @@ def save_config(config: Config) -> None:
     Args:
         config: Config object to save.
     """
-    config_file = get_config_file()
-    config_file.parent.mkdir(parents=True, exist_ok=True)
-
+    config_file = _get_config_dir() / "config.json"
     with open(config_file, "w") as f:
         json.dump(config.to_dict(), f, indent=2)
 
@@ -137,13 +126,13 @@ def setup_database_path(db_path: str) -> Config:
     """
     path = Path(db_path).expanduser().resolve()
 
-    # If path is a directory, use pokedex.db inside it
+    # Determine db file and directory
     if path.is_dir() or not path.suffix:
+        db_file = path / "pokedex.db"
         db_dir = path
-        db_file = db_dir / "pokedex.db"
     else:
-        db_dir = path.parent
         db_file = path
+        db_dir = path.parent
 
     # Create directory if it doesn't exist
     try:
@@ -162,7 +151,6 @@ def setup_database_path(db_path: str) -> Config:
     # Create and save config
     config = Config(db_path=db_file, backups_path=backups_dir)
     save_config(config)
-
     return config
 
 
@@ -194,5 +182,13 @@ def get_api_base_url() -> Optional[str]:
         return env_url
 
     # Check config file
-    config = load_config()
-    return config.api_base_url
+    return load_config().api_base_url
+
+
+def get_config_file_path() -> Path:
+    """Get path to configuration file.
+
+    Returns:
+        Path to config.json file
+    """
+    return _get_config_dir() / "config.json"

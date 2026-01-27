@@ -126,14 +126,7 @@ def get_display_name(tcgdex_id: str, language: str) -> str:
         Localized card name, or English name if not available,
         or tcgdex_id if card not found
     """
-    # Try localized name first
-    card_name_local = db.get_card_name(tcgdex_id, language)
-    if card_name_local:
-        return card_name_local
-
-    # Fallback to English name from cards table
-    card_data = db.get_card(tcgdex_id)
-    return card_data["name"] if card_data else tcgdex_id
+    return db.get_display_name(tcgdex_id, language)
 
 
 def get_current_quantity(tcgdex_id: str, variant: str, language: str) -> int:
@@ -878,7 +871,7 @@ def handle_setup(args: argparse.Namespace) -> int:
     if args.show:
         current_config = config.load_config()
         print("Current configuration:")
-        print(f"  Config file:    {config.get_config_dir() / 'config.json'}")
+        print(f"  Config file:    {config.get_config_file_path()}")
         print(f"  Database path:  {current_config.db_path}")
         print(f"  Backups path:   {current_config.backups_path}")
         print(f"  API base URL:   {current_config.api_base_url or '(default)'}")

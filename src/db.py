@@ -373,6 +373,36 @@ def get_card_name(tcgdex_id: str, language: str) -> Optional[str]:
         return row[0] if row else None
 
 
+def get_display_name(tcgdex_id: str, language: str) -> str:
+    """Get localized card name with English fallback.
+
+    Uses a single SQL query with COALESCE to try:
+    1. Localized name from card_names table
+    2. English name from cards table
+    3. tcgdex_id if card not found
+
+    Args:
+        tcgdex_id: Full TCGdex ID
+        language: Preferred language code
+
+    Returns:
+        Localized card name, or English name if not available,
+        or tcgdex_id if card not found
+    """
+    with get_connection() as conn:
+        cursor = conn.execute(
+            """
+            SELECT COALESCE(n.name, c.name, ?)
+            FROM cards c
+            LEFT JOIN card_names n ON c.tcgdex_id = n.tcgdex_id AND n.language = ?
+            WHERE c.tcgdex_id = ?
+            """,
+            (tcgdex_id, language, tcgdex_id),
+        )
+        row = cursor.fetchone()
+        return row[0] if row else tcgdex_id
+
+
 def get_languages_for_card(tcgdex_id: str) -> list[str]:
     """Get all languages owned for a specific card.
 
