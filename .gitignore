@@ -79,3 +79,8 @@ Thumbs.db
 
 # Export files
 pkmdex_export_*.json
+
+# Docker
+.env
+data/
+

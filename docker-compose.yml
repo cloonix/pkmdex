@@ -2,11 +2,30 @@ version: '3.8'
 
 services:
   pkmdex-web:
-    build: .
+    image: ghcr.io/cloonix/pkmdex:alpine  # Use pre-built image from GitHub
+    # Alternatively, build locally:
+    # build: .
+    container_name: pkmdex-web
     ports:
-      - "8000:8000"
+      - "${PKMDEX_PORT:-8000}:8000"
     environment:
-      - PKMDEX_API_KEY=${PKMDEX_API_KEY:-your-secret-key-here}
+      # REQUIRED: API key for sync authentication
+      # Generate with: openssl rand -hex 32
+      - PKMDEX_API_KEY=${PKMDEX_API_KEY:?Please set PKMDEX_API_KEY environment variable}
+      
+      # Optional: Custom database path (defaults to /data/pokedex.db)
+      # - PKMDEX_DB_PATH=/data/pokedex.db
     volumes:
-      - ./data:/data
+      # Persistent database storage
+      - ${PKMDEX_DATA_DIR:-./data}:/data
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/stats"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    labels:
+      - "com.pkmdex.description=Pokemon Card Collection Web Interface"
+      - "com.pkmdex.version=2.0"
+
