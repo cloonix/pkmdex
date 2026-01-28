@@ -28,7 +28,7 @@ class Config:
         Uses ~/.local/share/pkmdex for data storage on Linux/macOS,
         or %LOCALAPPDATA%/pkmdex on Windows.
         """
-        data_dir = _get_data_dir()
+        data_dir = get_data_dir()
         return cls(
             db_path=data_dir / "pokedex.db",
             backups_path=data_dir / "backups",
@@ -98,14 +98,7 @@ def get_data_dir() -> Path:
     return _get_app_dir("data")
 
 
-def _get_config_dir() -> Path:
-    """Get OS-specific configuration directory (deprecated, use get_config_dir)."""
-    return get_config_dir()
 
-
-def _get_data_dir() -> Path:
-    """Get OS-specific data directory (deprecated, use get_data_dir)."""
-    return get_data_dir()
 
 
 def load_config() -> Config:
@@ -226,10 +219,4 @@ def get_config_file() -> Path:
     return get_config_dir() / "config.json"
 
 
-def get_config_file_path() -> Path:
-    """Get path to configuration file (alias for get_config_file).
 
-    Returns:
-        Path to config.json file
-    """
-    return get_config_file()

@@ -377,8 +377,65 @@ def get_card(tcgdex_id: str) -> Optional[dict]:
         return row_to_dict(cursor, row)
 
 
+def query_cards(
+    where_clause: str = "",
+    params: tuple = (),
+    order_by: str = "",
+    limit: int = 0,
+    single_row: bool = False
+) -> list[dict] | dict | None:
+    """Unified card query function with flexible filtering.
+    
+    This function provides a consolidated interface for querying the cards table
+    with various filtering and sorting options, reducing code duplication.
+    
+    Args:
+        where_clause: SQL WHERE clause (without WHERE keyword)
+        params: Parameters for the WHERE clause
+        order_by: SQL ORDER BY clause (without ORDER BY keyword)
+        limit: Maximum number of rows to return (0 for no limit)
+        single_row: If True, return single dict or None; if False, return list
+    
+    Returns:
+        Single dict if single_row=True and row found, None if no row found
+        List of dicts if single_row=False
+        None if single_row=True and no row found
+    
+    Examples:
+        # Get single card
+        query_cards("tcgdex_id = ?", ("me01-136",), single_row=True)
+        
+        # Get cards by set
+        query_cards("set_id = ?", ("me01",), order_by="card_number")
+        
+        # Get stale cards
+        query_cards("set_id = ? AND hp > ?", ("me01", 100), order_by="hp DESC", limit=10)
+    """
+    query = "SELECT * FROM cards"
+    
+    if where_clause:
+        query += f" WHERE {where_clause}"
+    
+    if order_by:
+        query += f" ORDER BY {order_by}"
+    
+    if limit > 0:
+        query += f" LIMIT {limit}"
+    
+    with get_connection() as conn:
+        cursor = conn.execute(query, params)
+        
+        if single_row:
+            row = cursor.fetchone()
+            return row_to_dict(cursor, row) if row else None
+        else:
+            return rows_to_dicts(cursor)
+
+
 def get_cards_by_set(set_id: str) -> list[dict]:
     """Get all canonical cards in a set.
+    
+    This function now uses the unified query_cards() function.
 
     Args:
         set_id: Set identifier (e.g., "me01")
@@ -386,11 +443,11 @@ def get_cards_by_set(set_id: str) -> list[dict]:
     Returns:
         List of card data dicts
     """
-    with get_connection() as conn:
-        cursor = conn.execute(
-            "SELECT * FROM cards WHERE set_id = ? ORDER BY card_number", (set_id,)
-        )
-        return rows_to_dicts(cursor)
+    return query_cards(
+        where_clause="set_id = ?",
+        params=(set_id,),
+        order_by="card_number"
+    )
 
 
 def get_stale_cards(days: int = 7) -> list[str]:

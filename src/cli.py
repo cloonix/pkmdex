@@ -1403,7 +1403,7 @@ def handle_setup(args: argparse.Namespace) -> int:
     if args.show:
         current_config = config.load_config()
         print("Current configuration:")
-        print(f"  Config file:    {config.get_config_file_path()}")
+        print(f"  Config file:    {config.get_config_file()}")
         print(f"  Database path:  {current_config.db_path}")
         print(f"  Backups path:   {current_config.backups_path}")
         print(f"  API base URL:   {current_config.api_base_url or '(default)'}")
