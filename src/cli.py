@@ -16,6 +16,7 @@ from .models import (
     validate_language,
     validate_variant,
 )
+from . import __version__
 
 
 def expand_card_range(start: str, end: str) -> list[str]:
@@ -1966,6 +1967,14 @@ def create_parser() -> argparse.ArgumentParser:
         prog="pkm",
         description="Manage your Pokemon TCG card collection (supports multiple languages)",
         epilog="Examples: pkm add de:me01:136  or  pkm add de:me01:136:holo  or  pkm cache --refresh",
+    )
+    
+    # Add version argument
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
+        help="Show version information and exit"
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")

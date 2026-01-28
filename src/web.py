@@ -12,8 +12,9 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import db
+from . import __version__
 
-app = FastAPI(title="Pokemon Card Collection")
+app = FastAPI(title="Pokemon Card Collection", version=__version__)
 
 
 def api_error(status_code: int, error_type: str, detail: str) -> HTTPException:
@@ -95,7 +96,26 @@ class SyncRequest(BaseModel):
 async def index() -> str:
     """Serve the main page."""
     html_path = Path(__file__).parent / "templates" / "index.html"
-    return html_path.read_text()
+    html_content = html_path.read_text()
+    
+    # Add version info to the page
+    version_html = f"""
+    <div style="position: fixed; bottom: 10px; right: 10px; background: #f0f0f0; padding: 5px 10px; border-radius: 5px; font-size: 12px; color: #666;">
+        Pokemon Card Collection v{__version__}
+    </div>
+    """
+    
+    return html_content.replace("</body>", f"{version_html}</body>")
+
+
+@app.get("/api/version")
+async def get_version() -> dict:
+    """Get application version information."""
+    return {
+        "version": __version__,
+        "name": "Pokemon Card Collection",
+        "api": "v2"
+    }
 
 
 @app.get("/api/stats")
