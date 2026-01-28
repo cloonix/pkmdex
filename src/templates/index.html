@@ -521,24 +521,6 @@
             </div>
         </div>
         
-        <!-- Color Filters -->
-        <div class="color-filters">
-            <div class="color-filters-label">Quick Color Filter</div>
-            <div class="color-badges">
-                <template x-for="color in colorFilters" :key="color.name">
-                    <div 
-                        class="color-badge" 
-                        :class="{ 'active': filters.colors.includes(color.name) }"
-                        :style="'background-color: ' + color.bg + '; color: ' + color.text"
-                        @click="toggleColorFilter(color.name)"
-                    >
-                        <span class="color-badge-dot" :style="'background-color: ' + color.dot"></span>
-                        <span x-text="color.name"></span>
-                    </div>
-                </template>
-            </div>
-        </div>
-        
         <!-- Filters -->
         <div class="filters-wrapper">
             <div class="filter-header">
@@ -574,16 +556,6 @@
                     <option value="">All Sets</option>
                     <template x-for="set in filterOptions.sets" :key="set">
                         <option :value="set" x-text="set"></option>
-                    </template>
-                </select>
-            </div>
-            
-            <div class="filter-group">
-                <label class="filter-label" for="type">Type</label>
-                <select id="type" x-model="filters.type" @change="loadCards()">
-                    <option value="">All Types</option>
-                    <template x-for="type in filterOptions.types" :key="type">
-                        <option :value="type" x-text="type"></option>
                     </template>
                 </select>
             </div>
@@ -642,6 +614,24 @@
             </div>
         </div>
     </div>
+        
+        <!-- Type Filters -->
+        <div class="color-filters">
+            <div class="color-filters-label">Type Filter</div>
+            <div class="color-badges">
+                <template x-for="type in typeFilters" :key="type.name">
+                    <div 
+                        class="color-badge" 
+                        :class="{ 'active': filters.types.includes(type.name) }"
+                        :style="'background-color: ' + type.bg + '; color: ' + type.text"
+                        @click="toggleTypeFilter(type.name)"
+                    >
+                        <span class="color-badge-dot" :style="'background-color: ' + type.dot"></span>
+                        <span x-text="type.name"></span>
+                    </div>
+                </template>
+            </div>
+        </div>
         
         <!-- Loading -->
         <div class="loading" x-show="loading">
@@ -917,25 +907,24 @@
                     language: 'de',
                     name: '',
                     setId: '',
-                    type: '',
                     category: '',
                     rarity: '',
                     stage: '',
                     regulationMark: '',
                     legalStandard: '',
-                    colors: [],
+                    types: [],
                 },
-                colorFilters: [
-                    { name: 'Red', bg: '#ffebee', text: '#c62828', dot: '#f44336' },
-                    { name: 'Blue', bg: '#e3f2fd', text: '#1565c0', dot: '#2196f3' },
-                    { name: 'Yellow', bg: '#fffde7', text: '#f57f17', dot: '#ffeb3b' },
-                    { name: 'Green', bg: '#e8f5e9', text: '#2e7d32', dot: '#4caf50' },
-                    { name: 'Black', bg: '#f5f5f5', text: '#212121', dot: '#424242' },
-                    { name: 'Brown', bg: '#efebe9', text: '#4e342e', dot: '#795548' },
-                    { name: 'Purple', bg: '#f3e5f5', text: '#6a1b9a', dot: '#9c27b0' },
-                    { name: 'Gray', bg: '#fafafa', text: '#616161', dot: '#9e9e9e' },
-                    { name: 'White', bg: '#ffffff', text: '#424242', dot: '#e0e0e0' },
-                    { name: 'Pink', bg: '#fce4ec', text: '#c2185b', dot: '#e91e63' },
+                typeFilters: [
+                    { name: 'Fire', bg: '#ffebee', text: '#c62828', dot: '#f44336' },
+                    { name: 'Water', bg: '#e3f2fd', text: '#1565c0', dot: '#2196f3' },
+                    { name: 'Lightning', bg: '#fffde7', text: '#f57f17', dot: '#ffeb3b' },
+                    { name: 'Grass', bg: '#e8f5e9', text: '#2e7d32', dot: '#4caf50' },
+                    { name: 'Fighting', bg: '#efebe9', text: '#4e342e', dot: '#795548' },
+                    { name: 'Psychic', bg: '#f3e5f5', text: '#6a1b9a', dot: '#9c27b0' },
+                    { name: 'Darkness', bg: '#f5f5f5', text: '#212121', dot: '#424242' },
+                    { name: 'Metal', bg: '#fafafa', text: '#616161', dot: '#9e9e9e' },
+                    { name: 'Colorless', bg: '#ffffff', text: '#424242', dot: '#e0e0e0' },
+                    { name: 'Dragon', bg: '#fff3e0', text: '#e65100', dot: '#ff9800' },
                 ],
                 loading: false,
                 selectedCard: null,
@@ -1015,7 +1004,6 @@
                         if (this.filters.language) params.append('language', this.filters.language);
                         if (this.filters.name) params.append('name', this.filters.name);
                         if (this.filters.setId) params.append('set_id', this.filters.setId);
-                        if (this.filters.type) params.append('card_type', this.filters.type);
                         if (this.filters.category) params.append('category', this.filters.category);
                         if (this.filters.rarity) params.append('rarity', this.filters.rarity);
                         if (this.filters.stage) params.append('stage', this.filters.stage);
@@ -1035,35 +1023,22 @@
                 clearFilters() {
                     this.filters.name = '';
                     this.filters.setId = '';
-                    this.filters.type = '';
                     this.filters.category = '';
                     this.filters.rarity = '';
                     this.filters.stage = '';
                     this.filters.regulationMark = '';
                     this.filters.legalStandard = '';
-                    this.filters.colors = [];
+                    this.filters.types = [];
                     this.loadCards();
                 },
                 
-                toggleColorFilter(colorName) {
-                    const index = this.filters.colors.indexOf(colorName);
+                toggleTypeFilter(typeName) {
+                    const index = this.filters.types.indexOf(typeName);
                     if (index > -1) {
-                        this.filters.colors.splice(index, 1);
+                        this.filters.types.splice(index, 1);
                     } else {
-                        this.filters.colors.push(colorName);
+                        this.filters.types.push(typeName);
                     }
-                    this.applyColorFilter();
-                },
-                
-                applyColorFilter() {
-                    // Re-filter the card groups based on selected colors
-                    if (this.filters.colors.length === 0) {
-                        // No color filter, show all groups
-                        return;
-                    }
-                    // Note: This is a client-side filter for now
-                    // We'll filter based on card types which often match colors
-                    // TODO: This could be enhanced by mapping types to colors properly
                     this.groupCards();
                 },
                 
@@ -1076,45 +1051,17 @@
                     let count = 0;
                     if (this.filters.name) count++;
                     if (this.filters.setId) count++;
-                    if (this.filters.type) count++;
                     if (this.filters.category) count++;
                     if (this.filters.rarity) count++;
                     if (this.filters.stage) count++;
                     if (this.filters.regulationMark) count++;
                     if (this.filters.legalStandard) count++;
-                    if (this.filters.colors.length > 0) count++;
+                    if (this.filters.types.length > 0) count++;
                     return count;
                 },
                 
                 groupCards() {
                     const grouped = {};
-                    
-                    // Type to color mapping for Pokemon TCG
-                    const typeColorMap = {
-                        'Fire': 'Red',
-                        'Water': 'Blue',
-                        'Lightning': 'Yellow',
-                        'Grass': 'Green',
-                        'Fighting': 'Brown',
-                        'Psychic': 'Purple',
-                        'Darkness': 'Black',
-                        'Metal': 'Gray',
-                        'Fairy': 'Pink',
-                        'Dragon': 'Yellow',
-                        'Colorless': 'White',
-                        // German types
-                        'Feuer': 'Red',
-                        'Wasser': 'Blue',
-                        'Elektro': 'Yellow',
-                        'Pflanze': 'Green',
-                        'Kampf': 'Brown',
-                        'Psycho': 'Purple',
-                        'Finsternis': 'Black',
-                        'Metall': 'Gray',
-                        'Fee': 'Pink',
-                        'Drache': 'Yellow',
-                        'Farblos': 'White',
-                    };
                     
                     for (const card of this.cards) {
                         if (!grouped[card.tcgdex_id]) {
@@ -1130,8 +1077,8 @@
                     
                     let groups = Object.values(grouped);
                     
-                    // Apply color filter if active
-                    if (this.filters.colors.length > 0) {
+                    // Apply type filter if active
+                    if (this.filters.types.length > 0) {
                         groups = groups.filter(group => {
                             const card = group.cards[0];
                             if (!card.types) return false;
@@ -1148,11 +1095,8 @@
                                 types = card.types;
                             }
                             
-                            // Check if any type matches selected colors
-                            return types.some(type => {
-                                const color = typeColorMap[type];
-                                return color && this.filters.colors.includes(color);
-                            });
+                            // Check if any type matches selected types
+                            return types.some(type => this.filters.types.includes(type));
                         });
                     }
                     
