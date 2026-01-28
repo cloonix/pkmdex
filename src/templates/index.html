@@ -100,10 +100,10 @@
         }
         
         .filters {
-            padding: 15px;
+            padding: 12px;
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 12px;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 10px;
             overflow: hidden;
             transition: max-height 0.3s ease, opacity 0.3s ease;
         }
@@ -132,17 +132,17 @@
         }
         
         .filter-label {
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 600;
             color: #555;
             text-transform: uppercase;
         }
         
         select, input {
-            padding: 8px 12px;
+            padding: 7px 11px;
             border: 1px solid #ddd;
             border-radius: 4px;
-            font-size: 14px;
+            font-size: 13px;
             width: 100%;
         }
         
@@ -438,33 +438,42 @@
             color: #666;
         }
         
-        /* Color filters */
+        /* Compact filter buttons - Each group on separate line with inline label */
         .color-filters {
             background: white;
-            padding: 15px;
-            margin-bottom: 20px;
+            padding: 8px;
+            margin-bottom: 15px;
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
         
-        .color-filters-label {
+        .filter-group-inline {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+            flex-wrap: wrap;
+        }
+        
+        .filter-label-inline {
             font-size: 12px;
             font-weight: 600;
             color: #555;
-            text-transform: uppercase;
-            margin-bottom: 10px;
+            min-width: 80px;
         }
         
         .color-badges {
             display: flex;
             flex-wrap: wrap;
-            gap: 8px;
+            gap: 6px;
+            flex: 1;
+            min-width: 0;
         }
         
         .color-badge {
-            padding: 8px 16px;
-            border-radius: 20px;
-            font-size: 13px;
+            padding: 6px 12px;
+            border-radius: 16px;
+            font-size: 12px;
             font-weight: 600;
             cursor: pointer;
             border: 2px solid transparent;
@@ -472,8 +481,28 @@
             user-select: none;
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 4px;
+            background: #f5f5f5;
+            color: #333;
+            height: 28px;
+            min-width: 28px;
         }
+
+        /* Rarity-specific colors */
+        .color-badge.rarity-common { background: #e8f5e9; color: #2e7d32; }
+        .color-badge.rarity-uncommon { background: #e3f2fd; color: #1565c0; }
+        .color-badge.rarity-rare { background: #fff3e0; color: #e65100; }
+        .color-badge.rarity-ultra-rare { background: #f3e5f5; color: #6a1b9a; }
+        .color-badge.rarity-secret-rare { background: #fce4ec; color: #c2185b; }
+        .color-badge.rarity-amazing-rare { background: #fff8e1; color: #f57f17; }
+        .color-badge.rarity-special-art { background: #e1f5fe; color: #0277bd; }
+
+        /* Regulation mark colors */
+        .color-badge.regulation-d { background: #e3f2fd; color: #1565c0; }
+        .color-badge.regulation-e { background: #e8f5e9; color: #2e7d32; }
+        .color-badge.regulation-f { background: #fff3e0; color: #e65100; }
+        .color-badge.regulation-g { background: #f3e5f5; color: #6a1b9a; }
+        .color-badge.regulation-h { background: #fce4ec; color: #c2185b; }
         
         .color-badge:hover {
             transform: translateY(-1px);
@@ -487,8 +516,8 @@
         }
         
         .color-badge-dot {
-            width: 10px;
-            height: 10px;
+            width: 8px;
+            height: 8px;
             border-radius: 50%;
             border: 1px solid rgba(0,0,0,0.1);
         }
@@ -571,31 +600,11 @@
             </div>
             
             <div class="filter-group">
-                <label class="filter-label" for="rarity">Rarity</label>
-                <select id="rarity" x-model="filters.rarity" @change="loadCards()">
-                    <option value="">All Rarities</option>
-                    <template x-for="rarity in filterOptions.rarities" :key="rarity">
-                        <option :value="rarity" x-text="rarity"></option>
-                    </template>
-                </select>
-            </div>
-            
-            <div class="filter-group">
                 <label class="filter-label" for="stage">Stage</label>
                 <select id="stage" x-model="filters.stage" @change="loadCards()">
                     <option value="">All Stages</option>
                     <template x-for="stage in filterOptions.stages" :key="stage">
                         <option :value="stage" x-text="stage"></option>
-                    </template>
-                </select>
-            </div>
-            
-            <div class="filter-group">
-                <label class="filter-label" for="regulationMark">Regulation Mark</label>
-                <select id="regulationMark" x-model="filters.regulationMark" @change="loadCards()">
-                    <option value="">All Marks</option>
-                    <template x-for="mark in filterOptions.regulation_marks" :key="mark">
-                        <option :value="mark" x-text="mark"></option>
                     </template>
                 </select>
             </div>
@@ -615,21 +624,69 @@
         </div>
     </div>
         
-        <!-- Type Filters -->
+        <!-- Compact Filter Buttons - Each group on separate line with inline label -->
         <div class="color-filters">
-            <div class="color-filters-label">Type Filter</div>
-            <div class="color-badges">
-                <template x-for="type in typeFilters" :key="type.name">
-                    <div 
-                        class="color-badge" 
-                        :class="{ 'active': filters.types.includes(type.name) }"
-                        :style="'background-color: ' + type.bg + '; color: ' + type.text"
-                        @click="toggleTypeFilter(type.name)"
-                    >
-                        <span class="color-badge-dot" :style="'background-color: ' + type.dot"></span>
-                        <span x-text="type.name"></span>
-                    </div>
-                </template>
+            <div class="filter-group-inline">
+                <span class="filter-label-inline">Type:</span>
+                <div class="color-badges">
+                    <template x-for="type in typeFilters" :key="type.name">
+                        <div 
+                            class="color-badge" 
+                            :class="{ 'active': filters.types.includes(type.name) }"
+                            :style="'background-color: ' + type.bg + '; color: ' + type.text"
+                            @click="toggleTypeFilter(type.name)"
+                        >
+                            <span class="color-badge-dot" :style="'background-color: ' + type.dot"></span>
+                            <span x-text="type.name"></span>
+                        </div>
+                    </template>
+                </div>
+            </div>
+            
+            <div class="filter-group-inline">
+                <span class="filter-label-inline">Rarity:</span>
+                <div class="color-badges">
+                    <template x-for="rarity in filterOptions.rarities" :key="rarity">
+                        <div 
+                            class="color-badge" 
+                            :class="{
+                                'active': filters.rarity.includes(rarity),
+                                'rarity-common': rarity.includes('Common'),
+                                'rarity-uncommon': rarity.includes('Uncommon'),
+                                'rarity-special-art': rarity.includes('Special'),
+                                'rarity-rare': rarity.includes('Rare') && !rarity.includes('Ultra') && !rarity.includes('Secret') && !rarity.includes('Amazing'),
+                                'rarity-ultra-rare': rarity.includes('Ultra Rare'),
+                                'rarity-secret-rare': rarity.includes('Secret Rare'),
+                                'rarity-amazing-rare': rarity.includes('Amazing Rare')
+                            }"
+                            @click="toggleRarityFilter(rarity)"
+                        >
+                            <span x-text="rarity"></span>
+                        </div>
+                    </template>
+                </div>
+            </div>
+            
+            <div class="filter-group-inline">
+                <span class="filter-label-inline">Regulation:</span>
+                <div class="color-badges">
+                    <template x-for="mark in filterOptions.regulation_marks" :key="mark">
+                        <div 
+                            class="color-badge" 
+                            :class="{
+                                'active': filters.regulationMark.includes(mark),
+                                'regulation-d': mark === 'D',
+                                'regulation-e': mark === 'E',
+                                'regulation-f': mark === 'F',
+                                'regulation-g': mark === 'G',
+                                'regulation-h': mark === 'H'
+                            }"
+                            @click="toggleRegulationMarkFilter(mark)"
+                        >
+                            <span x-text="mark"></span>
+                        </div>
+                    </template>
+                </div>
             </div>
         </div>
         
@@ -908,9 +965,9 @@
                     name: '',
                     setId: '',
                     category: '',
-                    rarity: '',
+                    rarity: [],
                     stage: '',
-                    regulationMark: '',
+                    regulationMark: [],
                     legalStandard: '',
                     types: [],
                 },
@@ -1024,9 +1081,9 @@
                     this.filters.name = '';
                     this.filters.setId = '';
                     this.filters.category = '';
-                    this.filters.rarity = '';
+                    this.filters.rarity = [];
                     this.filters.stage = '';
-                    this.filters.regulationMark = '';
+                    this.filters.regulationMark = [];
                     this.filters.legalStandard = '';
                     this.filters.types = [];
                     this.loadCards();
@@ -1041,6 +1098,26 @@
                     }
                     this.groupCards();
                 },
+
+                toggleRarityFilter(rarity) {
+                    const index = this.filters.rarity.indexOf(rarity);
+                    if (index > -1) {
+                        this.filters.rarity.splice(index, 1);
+                    } else {
+                        this.filters.rarity.push(rarity);
+                    }
+                    this.groupCards();
+                },
+
+                toggleRegulationMarkFilter(mark) {
+                    const index = this.filters.regulationMark.indexOf(mark);
+                    if (index > -1) {
+                        this.filters.regulationMark.splice(index, 1);
+                    } else {
+                        this.filters.regulationMark.push(mark);
+                    }
+                    this.groupCards();
+                },
                 
                 toggleFilters() {
                     this.filtersCollapsed = !this.filtersCollapsed;
@@ -1052,9 +1129,9 @@
                     if (this.filters.name) count++;
                     if (this.filters.setId) count++;
                     if (this.filters.category) count++;
-                    if (this.filters.rarity) count++;
+                    if (this.filters.rarity.length > 0) count++;
                     if (this.filters.stage) count++;
-                    if (this.filters.regulationMark) count++;
+                    if (this.filters.regulationMark.length > 0) count++;
                     if (this.filters.legalStandard) count++;
                     if (this.filters.types.length > 0) count++;
                     return count;
@@ -1097,6 +1174,22 @@
                             
                             // Check if any type matches selected types
                             return types.some(type => this.filters.types.includes(type));
+                        });
+                    }
+                    
+                    // Apply rarity filter if active (AND filter - must match ALL selected rarities)
+                    if (this.filters.rarity.length > 0) {
+                        groups = groups.filter(group => {
+                            const card = group.cards[0];
+                            return this.filters.rarity.includes(card.rarity);
+                        });
+                    }
+                    
+                    // Apply regulation mark filter if active (AND filter - must match ALL selected marks)
+                    if (this.filters.regulationMark.length > 0) {
+                        groups = groups.filter(group => {
+                            const card = group.cards[0];
+                            return this.filters.regulationMark.includes(card.regulation_mark);
                         });
                     }
                     
