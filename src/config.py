@@ -16,6 +16,7 @@ class Config:
 
     db_path: Path
     backups_path: Path
+    raw_data_path: Path
     api_base_url: Optional[str] = None  # Optional custom API base URL
     web_api_url: Optional[str] = None  # Web app sync endpoint
     web_api_key: Optional[str] = None  # API key for web sync
@@ -31,6 +32,7 @@ class Config:
         return cls(
             db_path=data_dir / "pokedex.db",
             backups_path=data_dir / "backups",
+            raw_data_path=data_dir / "raw_data",
         )
 
     def to_dict(self) -> dict:
@@ -38,6 +40,7 @@ class Config:
         return {
             "db_path": str(self.db_path),
             "backups_path": str(self.backups_path),
+            "raw_data_path": str(self.raw_data_path),
             "api_base_url": self.api_base_url,
             "web_api_url": self.web_api_url,
             "web_api_key": self.web_api_key,
@@ -49,6 +52,7 @@ class Config:
         return cls(
             db_path=Path(data["db_path"]),
             backups_path=Path(data["backups_path"]),
+            raw_data_path=Path(data["raw_data_path"]),
             api_base_url=data.get("api_base_url"),
             web_api_url=data.get("web_api_url"),
             web_api_key=data.get("web_api_key"),
@@ -76,14 +80,32 @@ def _get_app_dir(subdir: str) -> Path:
     return app_dir
 
 
-def _get_config_dir() -> Path:
-    """Get OS-specific configuration directory."""
+def get_config_dir() -> Path:
+    """Get OS-specific configuration directory.
+    
+    Returns:
+        OS-specific directory path for configuration files
+    """
     return _get_app_dir("config")
 
 
-def _get_data_dir() -> Path:
-    """Get OS-specific data directory."""
+def get_data_dir() -> Path:
+    """Get OS-specific data directory.
+    
+    Returns:
+        OS-specific directory path for data files
+    """
     return _get_app_dir("data")
+
+
+def _get_config_dir() -> Path:
+    """Get OS-specific configuration directory (deprecated, use get_config_dir)."""
+    return get_config_dir()
+
+
+def _get_data_dir() -> Path:
+    """Get OS-specific data directory (deprecated, use get_data_dir)."""
+    return get_data_dir()
 
 
 def load_config() -> Config:
@@ -92,7 +114,7 @@ def load_config() -> Config:
     Returns:
         Config object with user preferences or defaults.
     """
-    config_file = _get_config_dir() / "config.json"
+    config_file = get_config_file()
 
     if config_file.exists():
         try:
@@ -111,7 +133,7 @@ def save_config(config: Config) -> None:
     Args:
         config: Config object to save.
     """
-    config_file = _get_config_dir() / "config.json"
+    config_file = get_config_file()
     with open(config_file, "w") as f:
         json.dump(config.to_dict(), f, indent=2)
 
@@ -154,8 +176,12 @@ def setup_database_path(db_path: str) -> Config:
     backups_dir = db_dir / "backups"
     backups_dir.mkdir(parents=True, exist_ok=True)
 
+    # Create raw_data subdirectory
+    raw_data_dir = db_dir / "raw_data"
+    raw_data_dir.mkdir(parents=True, exist_ok=True)
+
     # Create and save config
-    config = Config(db_path=db_file, backups_path=backups_dir)
+    config = Config(db_path=db_file, backups_path=backups_dir, raw_data_path=raw_data_dir)
     save_config(config)
     return config
 
@@ -191,10 +217,19 @@ def get_api_base_url() -> Optional[str]:
     return load_config().api_base_url
 
 
-def get_config_file_path() -> Path:
+def get_config_file() -> Path:
     """Get path to configuration file.
+    
+    Returns:
+        Path to config.json file
+    """
+    return get_config_dir() / "config.json"
+
+
+def get_config_file_path() -> Path:
+    """Get path to configuration file (alias for get_config_file).
 
     Returns:
         Path to config.json file
     """
-    return _get_config_dir() / "config.json"
+    return get_config_file()
