@@ -63,15 +63,65 @@
             color: #333;
         }
         
-        .filters {
+        .filter-header {
             background: white;
             padding: 15px;
             margin-bottom: 20px;
+            border-radius: 8px 8px 0 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: none;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .filter-toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .filter-toggle-icon {
+            transition: transform 0.3s ease;
+            font-size: 18px;
+        }
+        
+        .filter-toggle-icon.expanded {
+            transform: rotate(180deg);
+        }
+        
+        .filters-wrapper {
+            background: white;
+            margin-bottom: 20px;
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .filters {
+            padding: 15px;
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
             gap: 12px;
+            overflow: hidden;
+            transition: max-height 0.3s ease, opacity 0.3s ease;
+        }
+        
+        .filters.collapsed {
+            max-height: 0;
+            opacity: 0;
+            padding-top: 0;
+            padding-bottom: 0;
+        }
+        
+        @media (max-width: 768px) {
+            .filter-header {
+                display: flex;
+            }
+            
+            .filters-wrapper {
+                border-radius: 8px;
+            }
         }
         
         .filter-group {
@@ -416,7 +466,15 @@
         </div>
         
         <!-- Filters -->
-        <div class="filters">
+        <div class="filters-wrapper">
+            <div class="filter-header">
+                <button @click="toggleFilters()" class="filter-toggle" style="background: none; border: none; padding: 0; cursor: pointer; color: inherit; font-size: inherit;">
+                    <span class="filter-toggle-icon" :class="{ 'expanded': !filtersCollapsed }">▼</span>
+                    <span>Filters</span>
+                    <span style="color: #666; font-weight: normal; font-size: 14px;" x-show="getActiveFilterCount() > 0" x-text="'(' + getActiveFilterCount() + ' active)'"></span>
+                </button>
+            </div>
+            <div class="filters" :class="{ 'collapsed': filtersCollapsed }">
             <div class="filter-group">
                 <label class="filter-label" for="language">Language</label>
                 <select id="language" x-model="filters.language" @change="loadCards()">
@@ -509,6 +567,7 @@
                 <button @click="clearFilters()" class="secondary">Clear Filters</button>
             </div>
         </div>
+    </div>
         
         <!-- Loading -->
         <div class="loading" x-show="loading">
@@ -794,8 +853,14 @@
                 loading: false,
                 selectedCard: null,
                 selectedCardIndex: -1,
+                filtersCollapsed: false,
                 
                 async init() {
+                    // Load filter collapse state from localStorage (only on mobile)
+                    const isMobile = window.innerWidth <= 768;
+                    const savedState = localStorage.getItem('filtersCollapsed');
+                    this.filtersCollapsed = isMobile && (savedState === null ? true : savedState === 'true');
+                    
                     await this.loadFilterOptions();
                     await this.loadStats();
                     await this.loadCards();
@@ -813,6 +878,14 @@
                         } else if (e.key === 'Escape') {
                             e.preventDefault();
                             this.closeModal();
+                        }
+                    });
+                    
+                    // Update collapse state on window resize
+                    window.addEventListener('resize', () => {
+                        const isMobile = window.innerWidth <= 768;
+                        if (!isMobile) {
+                            this.filtersCollapsed = false;
                         }
                     });
                 },
@@ -871,6 +944,24 @@
                     this.filters.regulationMark = '';
                     this.filters.legalStandard = '';
                     this.loadCards();
+                },
+                
+                toggleFilters() {
+                    this.filtersCollapsed = !this.filtersCollapsed;
+                    localStorage.setItem('filtersCollapsed', this.filtersCollapsed);
+                },
+                
+                getActiveFilterCount() {
+                    let count = 0;
+                    if (this.filters.name) count++;
+                    if (this.filters.setId) count++;
+                    if (this.filters.type) count++;
+                    if (this.filters.category) count++;
+                    if (this.filters.rarity) count++;
+                    if (this.filters.stage) count++;
+                    if (this.filters.regulationMark) count++;
+                    if (this.filters.legalStandard) count++;
+                    return count;
                 },
                 
                 groupCards() {
