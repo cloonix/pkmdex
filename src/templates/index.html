@@ -853,13 +853,20 @@
                 loading: false,
                 selectedCard: null,
                 selectedCardIndex: -1,
-                filtersCollapsed: false,
+                filtersCollapsed: true,
                 
                 async init() {
-                    // Load filter collapse state from localStorage (only on mobile)
+                    // Load filter collapse state from localStorage
                     const isMobile = window.innerWidth <= 768;
                     const savedState = localStorage.getItem('filtersCollapsed');
-                    this.filtersCollapsed = isMobile && (savedState === null ? true : savedState === 'true');
+                    
+                    // Default to collapsed on mobile, check savedState if exists
+                    if (isMobile) {
+                        this.filtersCollapsed = savedState === null ? true : savedState === 'true';
+                    } else {
+                        // On desktop, expand filters
+                        this.filtersCollapsed = false;
+                    }
                     
                     await this.loadFilterOptions();
                     await this.loadStats();
@@ -886,6 +893,10 @@
                         const isMobile = window.innerWidth <= 768;
                         if (!isMobile) {
                             this.filtersCollapsed = false;
+                        } else {
+                            // On mobile, check localStorage or default to collapsed
+                            const savedState = localStorage.getItem('filtersCollapsed');
+                            this.filtersCollapsed = savedState === null ? true : savedState === 'true';
                         }
                     });
                 },
