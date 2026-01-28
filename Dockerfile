@@ -1,20 +1,35 @@
-FROM python:3.13-slim
+# Build stage - install dependencies
+FROM python:3.13-slim as builder
 
-# Set working directory
 WORKDIR /app
 
 # Install uv for faster dependency management
 RUN pip install --no-cache-dir uv
 
-# Copy project files
+# Copy only requirements files first for better caching
 COPY pyproject.toml ./
-COPY src/ ./src/
 
 # Install dependencies
 RUN uv pip install --system --no-cache -e .
 
+# Runtime stage - minimal image
+FROM python:3.13-slim
+
+WORKDIR /app
+
+# Copy only necessary files from builder
+COPY --from=builder /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+
+# Copy application code
+COPY src/ ./src/
+
 # Create data directory for database
 RUN mkdir -p /data
+
+# Create and switch to non-root user for security
+RUN useradd -m appuser && chown -R appuser:appuser /app /data
+USER appuser
 
 # Environment variables
 ENV PKMDEX_API_KEY=""

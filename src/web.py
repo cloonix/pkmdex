@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+from datetime import datetime
 from fastapi import FastAPI, HTTPException, Header, Depends
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -13,6 +14,29 @@ from pydantic import BaseModel
 from . import db
 
 app = FastAPI(title="Pokemon Card Collection")
+
+
+def api_error(status_code: int, error_type: str, detail: str) -> HTTPException:
+    """Standardized error response for API endpoints.
+    
+    Makes error responses consistent and more helpful for debugging.
+    
+    Args:
+        status_code: HTTP status code
+        error_type: Short error type identifier
+        detail: Human-readable error message
+        
+    Returns:
+        HTTPException with standardized format
+    """
+    return HTTPException(
+        status_code=status_code,
+        detail={
+            "error": error_type,
+            "message": detail,
+            "timestamp": datetime.now().isoformat()
+        }
+    )
 
 # Mount static files directory
 static_dir = Path(__file__).parent / "static"
@@ -36,11 +60,23 @@ def verify_api_key(x_api_key: str = Header(...)) -> None:
         HTTPException: If API key is invalid or missing
     """
     if not API_KEY:
-        raise HTTPException(
-            status_code=500, detail="Server configuration error: API key not set"
-        )
+        raise api_error(500, "server_config", "API key not set in server configuration")
     if x_api_key != API_KEY:
-        raise HTTPException(status_code=403, detail="Invalid API key")
+        raise api_error(403, "invalid_api_key", "The provided API key is invalid")
+
+
+class CardFilterParams(BaseModel):
+    """Query parameters for card filtering with validation."""
+    
+    language: str = "de"
+    set_id: Optional[str] = None
+    card_type: Optional[str] = None
+    category: Optional[str] = None
+    rarity: Optional[str] = None
+    stage: Optional[str] = None
+    name: Optional[str] = None
+    regulation_mark: Optional[str] = None
+    legal_standard: Optional[bool] = None
 
 
 class SyncRequest(BaseModel):
@@ -69,17 +105,7 @@ async def get_stats() -> dict:
 
 
 @app.get("/api/cards")
-async def get_cards(
-    language: str = "de",
-    set_id: Optional[str] = None,
-    card_type: Optional[str] = None,
-    category: Optional[str] = None,
-    rarity: Optional[str] = None,
-    stage: Optional[str] = None,
-    name: Optional[str] = None,
-    regulation_mark: Optional[str] = None,
-    legal_standard: Optional[bool] = None,
-) -> list[dict]:
+async def get_cards(params: CardFilterParams = Depends()) -> list[dict]:
     """Get owned cards with optional filters.
 
     Args:
@@ -97,15 +123,15 @@ async def get_cards(
         List of owned cards matching filters
     """
     return db.get_v2_owned_cards(
-        language=language,
-        set_id=set_id,
-        card_type=card_type,
-        category=category,
-        rarity=rarity,
-        stage=stage,
-        name=name,
-        regulation_mark=regulation_mark,
-        legal_standard=legal_standard,
+        language=params.language,
+        set_id=params.set_id,
+        card_type=params.card_type,
+        category=params.category,
+        rarity=params.rarity,
+        stage=params.stage,
+        name=params.name,
+        regulation_mark=params.regulation_mark,
+        legal_standard=params.legal_standard,
     )
 
 
