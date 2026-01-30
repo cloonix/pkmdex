@@ -19,219 +19,176 @@ from .models import (
 from . import __version__
 
 
-def expand_card_range(start: str, end: str) -> list[str]:
-    """Expand a card number range into individual numbers.
+# Variant suffix mapping
+VARIANT_SUFFIX_MAP = {
+    "h": "holo",
+    "r": "reverse",
+    "f": "firstEdition",
+}
+
+
+def get_default_language(context: Optional[session.SessionContext] = None) -> str:
+    """Get default language from context → config → hardcoded default.
 
     Args:
-        start: Starting card number (e.g., '136' or '010')
-        end: Ending card number (e.g., '140' or '012')
+        context: Optional session context
 
     Returns:
-        List of card numbers as strings, preserving leading zeros if present
-
-    Raises:
-        ValueError: If range is invalid
+        Language code (e.g., 'de', 'en')
     """
-    try:
-        start_num = int(start)
-        end_num = int(end)
+    if context and context.language:
+        return context.language
 
-        if start_num > end_num:
-            raise ValueError(f"Invalid range: {start}-{end} (start > end)")
+    # TODO: Add default_language field to config in future
+    # cfg = config.load_config()
+    # if hasattr(cfg, 'default_language') and cfg.default_language:
+    #     return cfg.default_language
 
-        if end_num - start_num > 100:
-            raise ValueError(f"Range too large: {start}-{end} (max 100 cards)")
-
-        # Preserve leading zeros if present in the start number
-        preserve_zeros = len(start) > len(str(start_num))
-        width = len(start) if preserve_zeros else 0
-
-        if width > 0:
-            return [str(i).zfill(width) for i in range(start_num, end_num + 1)]
-        else:
-            return [str(i) for i in range(start_num, end_num + 1)]
-    except ValueError as e:
-        if "invalid literal" in str(e):
-            raise ValueError(f"Invalid card numbers in range: {start}-{end}")
-        raise
+    return "de"  # Final fallback to German
 
 
-def parse_card_list(cards_str: str) -> list[str]:
-    """Parse comma-separated card numbers, supporting ranges.
+def parse_card_list_with_variants(cards_str: str) -> list[tuple[str, str]]:
+    """Parse comma-separated cards with individual variant suffixes.
+
+    Each card can have optional variant suffix: h=holo, r=reverse, f=firstEdition
+    No suffix means 'normal' variant. Range syntax is NOT supported.
 
     Args:
-        cards_str: Card numbers like '136,137,138' or '136-140' or '136,138-140,145'
+        cards_str: Cards like '136h,137,138r' or '136,137,138'
 
     Returns:
-        List of individual card numbers
+        List of (card_number, variant) tuples
 
     Examples:
-        >>> parse_card_list('136,137,138')
-        ['136', '137', '138']
-        >>> parse_card_list('136-140')
-        ['136', '137', '138', '139', '140']
-        >>> parse_card_list('136,138-140,145')
-        ['136', '138', '139', '140', '145']
+        >>> parse_card_list_with_variants('136h,137,138r')
+        [('136', 'holo'), ('137', 'normal'), ('138', 'reverse')]
+        >>> parse_card_list_with_variants('136,137,138')
+        [('136', 'normal'), ('137', 'normal'), ('138', 'normal')]
+
+    Raises:
+        ValueError: If format is invalid
     """
-    card_numbers = []
-    parts = cards_str.split(",")
+    card_variants = []
 
-    for part in parts:
+    for part in cards_str.split(","):
         part = part.strip()
+        if not part:
+            continue
 
-        if "-" in part:
-            # Range syntax: 136-140
-            range_parts = part.split("-")
-            if len(range_parts) != 2:
-                raise ValueError(f"Invalid range format: {part}")
+        card_number, variant = _extract_card_and_variant(part, require_variant=True)
 
-            start, end = range_parts
-            card_numbers.extend(expand_card_range(start.strip(), end.strip()))
-        else:
-            # Single card number
-            card_numbers.append(part)
+        if not card_number:
+            raise ValueError(f"Invalid card specification: {part}")
 
-    return card_numbers
+        card_variants.append((card_number, variant))
+
+    return card_variants
+
+
+def _extract_card_and_variant(
+    card_input: str, require_variant: bool
+) -> tuple[str, str | None]:
+    """Extract card number and variant from input with optional suffix.
+
+    Args:
+        card_input: Card string like '136h', '137', '138r'
+        require_variant: If True, default to 'normal'. If False, default to None.
+
+    Returns:
+        Tuple of (card_number, variant)
+    """
+    variant = "normal" if require_variant else None
+    card_number = card_input
+
+    if card_input and card_input[-1] in VARIANT_SUFFIX_MAP:
+        variant = VARIANT_SUFFIX_MAP[card_input[-1]]
+        card_number = card_input[:-1]
+
+    return card_number, variant
 
 
 def parse_card_spec(
     card_str: str,
     context: Optional[session.SessionContext] = None,
     require_variant: bool = True,
-    allow_legacy: bool = True
 ) -> tuple[str, str, str, str | None]:
-    """Unified card specification parser supporting all input formats.
-    
-    This function consolidates the functionality of parse_card_input, 
-    parse_card_input_flexible, and parse_card_list into a single parser.
-    
+    """Unified card specification parser with variant suffix support.
+
     Supports formats:
-    - Full: lang:set:card[:variant] (e.g., de:me01:136:normal)
-    - Context-aware: card[:variant] (e.g., 136 or 136:holo) - requires context
-    - Legacy: set:card (e.g., me01:136) - assumes German
-    - Multi-card: lang:set:card1,card2,card3[:variant] (e.g., de:me01:136,137,138:holo)
-    
+    - card[variant_suffix]                    (e.g., 136h, 137) - requires context
+    - set:card[variant_suffix]                (e.g., me01:136h, me01:137)
+    - lang:set:card[variant_suffix]           (e.g., de:me01:136h)
+    - set:card1[v],card2[v]...                (e.g., me01:136h,137,138r)
+    - lang:set:card1[v],card2[v]...           (e.g., de:me01:136h,137r)
+
+    Variant suffixes: h=holo, r=reverse, f=firstEdition, (none)=normal
+
     Args:
         card_str: Input string in various formats
         context: Optional session context for shorthand input
         require_variant: If True, return 'normal' as default variant. If False, return None.
-        allow_legacy: If True, allow legacy 2-part format (set:card)
-    
+
     Returns:
         Tuple of (language, set_id, card_number, variant)
         variant will be None if require_variant=False and not provided
-    
+
+        For multi-card input, returns only the FIRST card.
+        Use parse_card_list_with_variants() to get all cards.
+
     Raises:
         ValueError: If format is invalid or context is required but missing
     """
-    # Handle multi-card format first (contains commas or ranges)
     parts = card_str.split(":")
-    
-    # Check if this is a multi-card specification
-    if len(parts) >= 3 and ("," in parts[-1] or "-" in parts[-1]):
-        # Multi-card format: lang:set:card1,card2,card3[:variant]
-        # or: lang:set:card1-card3[:variant]
-        if len(parts) == 3:
-            # Format: lang:set:card_list
-            language, set_id, cards_and_variant = parts
-            variant = "normal" if require_variant else None
-        elif len(parts) == 4:
-            # Format: lang:set:card_list:variant
-            language, set_id, cards_and_variant, variant = parts
-        else:
-            raise ValueError(
-                f"Invalid multi-card format: {card_str}\n"
-                f"Expected: <lang>:<set_id>:<card_list>[:<variant>]\n"
-                f"Examples: de:me01:136,137,138 or de:me01:136-140:holo"
-            )
-        
-        # Check if variant is specified in the last part
-        if ":" in cards_and_variant and cards_and_variant.count(":") == 1:
-            # Has variant: 136,137:holo
-            cards_str, variant = cards_and_variant.rsplit(":", 1)
-            variant = variant.strip().lower()
-        else:
-            # No variant: 136,137,138
-            cards_str = cards_and_variant
-            variant = "normal" if require_variant else None
-        
-        # Parse the card list
-        card_numbers = parse_card_list(cards_str)
-        
-        # Validate and return first card (caller should iterate for multiple cards)
-        if not card_numbers:
-            raise ValueError(f"No valid card numbers found in: {cards_str}")
-        
-        card_number = card_numbers[0]  # Return first card for single-card operations
-        
-    # Handle single-card formats
-    elif len(parts) == 1:
-        # Shorthand format: 136 or 136:holo (requires context)
+    is_multi_card = "," in card_str
+
+    # Determine language, set_id, and card_input based on number of parts
+    if len(parts) == 1:
+        # Format: card[variant] (requires context)
         if not context or not context.is_valid():
             raise ValueError(
-                f"No context set. Use full format: <lang>:<set_id>:<card_number>\n"
-                f"Or set context first: pkm add de:me01:136"
+                "No context set. Use format: <set>:<card> or set context first"
             )
-        
-        # Check if variant is specified
-        if ":" in parts[0] and parts[0].count(":") == 1:
-            # Format: 136:holo
-            card_number, variant = parts[0].split(":", 1)
-        else:
-            # Format: 136
-            card_number = parts[0]
-            variant = "normal" if require_variant else None
-        
-        language = context.language  # type: ignore
-        set_id = context.set_id  # type: ignore
-        
+
+        assert context.language is not None and context.set_id is not None
+        language = context.language
+        set_id = context.set_id
+        card_input = parts[0]
+
     elif len(parts) == 2:
-        # Could be legacy format or shorthand with context
-        if allow_legacy:
-            # Legacy format: set:card (assume German)
-            set_id, card_number = parts
-            language = "de"
-            variant = "normal" if require_variant else None
-        else:
-            # Shorthand format: set:card (with context)
-            if not context or not context.is_valid():
-                raise ValueError(
-                    f"No context set. Use full format: <lang>:<set_id>:<card_number>\n"
-                    f"Or set context first: pkm add de:me01:136"
-                )
-            set_id, card_number = parts
-            language = context.language  # type: ignore
-            variant = "normal" if require_variant else None
-            
+        # Format: set:card[variant]
+        language = get_default_language(context)
+        set_id = parts[0].strip().lower()
+        card_input = parts[1]
+
     elif len(parts) == 3:
-        # Full format: lang:set:card (no variant)
-        language, set_id, card_number = parts
-        variant = "normal" if require_variant else None
-        
-    elif len(parts) == 4:
-        # Full format: lang:set:card:variant
-        language, set_id, card_number, variant = parts
-        
+        # Format: lang:set:card[variant]
+        language = parts[0].strip().lower()
+        set_id = parts[1].strip().lower()
+        card_input = parts[2]
+
     else:
         raise ValueError(
             f"Invalid format: {card_str}\n"
-            f"Expected formats:\n"
-            f"  <lang>:<set_id>:<card_number>[:<variant>]  (e.g., de:me01:136 or de:me01:136:holo)\n"
-            f"  <card_number>[:<variant>]                  (e.g., 136 or 136:holo - requires context)\n"
-            f"  <set_id>:<card_number>                     (e.g., me01:136 - legacy format, uses German)"
+            f"Expected: <card>[v] | <set>:<card>[v] | <lang>:<set>:<card>[v]\n"
+            f"Variant suffixes: h=holo, r=reverse, f=firstEdition"
         )
-    
-    # Normalize inputs
-    language = language.strip().lower()
-    set_id = set_id.strip().lower()
+
+    # Parse card number and variant
+    if is_multi_card:
+        card_variants = parse_card_list_with_variants(card_input)
+        card_number, variant = card_variants[0]
+    else:
+        card_number, variant = _extract_card_and_variant(card_input, require_variant)
+
+    # Validate
     card_number = card_number.strip()
-    if variant:
-        variant = variant.strip().lower()
-        validate_variant(variant)
-    
-    # Validate language
+    if not card_number:
+        raise ValueError(f"Invalid card number in: {card_str}")
+
     validate_language(language)
-    
+    if variant:
+        validate_variant(variant)
+
     return language, set_id, card_number, variant
 
 
@@ -239,16 +196,14 @@ def parse_card_input(
     card_str: str, context: Optional[session.SessionContext] = None
 ) -> tuple[str, str, str, str]:
     """Parse user input with optional context support.
-    
+
     This function is now a wrapper around the unified parse_card_spec function.
-    
-    Supports multiple formats:
-    - Full format: de:me01:136:normal or de:me01:136
-    - With context:
-      - 136 (uses context for language and set)
-      - 136:holo (uses context for language and set, specify variant)
-      - me02:076:reverse (uses context language, override set and variant)
-    - Multi-card: de:me01:136,137,138 (returns first card, caller should use parse_card_list)
+
+    Supports multiple formats (with variant suffix notation):
+    - 136h (uses context, holo variant)
+    - me01:136r (uses default language, reverse variant)
+    - de:me01:136 (full spec, normal variant)
+    - Multi-card: me01:136h,137,138r (returns first card)
 
     Args:
         card_str: Input string in various formats
@@ -260,7 +215,7 @@ def parse_card_input(
     Raises:
         ValueError: If format is invalid or context is required but missing
     """
-    result = parse_card_spec(card_str, context, require_variant=True, allow_legacy=True)
+    result = parse_card_spec(card_str, context, require_variant=True)
     # Ensure variant is not None for backward compatibility
     if result[3] is None:
         result = (result[0], result[1], result[2], "normal")
@@ -270,12 +225,12 @@ def parse_card_input(
 def parse_card_input_flexible(
     card_str: str, require_variant: bool = True
 ) -> tuple[str, str, str, str | None]:
-    """Parse card input supporting both full format and legacy 2-part format.
-    
+    """Parse card input with variant suffix support.
+
     This function is now a wrapper around the unified parse_card_spec function.
-    
+
     Args:
-        card_str: Input string (lang:set:card[:variant] or set:card for legacy)
+        card_str: Input string (e.g., me01:136h, de:me01:136r)
         require_variant: If True, return 'normal' as default variant. If False, return None.
 
     Returns:
@@ -285,8 +240,8 @@ def parse_card_input_flexible(
     Raises:
         ValueError: If format is invalid
     """
-    # Use the unified parser without context and with legacy support
-    result = parse_card_spec(card_str, context=None, require_variant=require_variant, allow_legacy=True)
+    # Use the unified parser without context
+    result = parse_card_spec(card_str, context=None, require_variant=require_variant)
     return result
 
 
@@ -552,32 +507,33 @@ def handle_cli_error(
     error: Exception,
     context: str = "",
     show_traceback: bool = False,
-    exit_code: int = 1
+    exit_code: int = 1,
 ) -> int:
     """Standardized error handling for CLI commands.
-    
+
     Provides consistent error formatting and optional debugging information.
-    
+
     Args:
         error: Exception object to handle
         context: Additional context for the error (e.g., "adding card")
         show_traceback: Whether to show full traceback for debugging
         exit_code: Exit code to return
-    
+
     Returns:
         exit_code for chaining
     """
     error_prefix = "Error"
     if context:
         error_prefix += f" {context}"
-    
+
     print(f"{error_prefix}: {error}", file=sys.stderr)
-    
+
     if show_traceback:
         import traceback
+
         print("\nTraceback:", file=sys.stderr)
         traceback.print_exc()
-    
+
     return exit_code
 
 
@@ -620,13 +576,13 @@ async def add_card_workflow(
     language: str,
     force: bool = False,
     quantity: int = 1,
-    show_image: bool = True
+    show_image: bool = True,
 ) -> tuple[bool, str, str, int, int]:
     """Shared workflow for adding a single card to collection.
-    
+
     This function consolidates the common pattern used in both handle_add
     and handle_add_multiple to reduce code duplication.
-    
+
     Args:
         set_id: TCGdex set ID
         card_number: Card number
@@ -635,7 +591,7 @@ async def add_card_workflow(
         force: Whether to force add even if variant is not listed in API
         quantity: Quantity to add
         show_image: Whether to display image URL
-    
+
     Returns:
         Tuple of (success, localized_name, tcgdex_id, old_quantity, new_quantity)
         If success is False, other values may be empty/invalid
@@ -648,7 +604,11 @@ async def add_card_workflow(
 
         # Validate variant availability
         if not force and not validate_variant_or_prompt(
-            card_info_en, variant, force, localized_name, f"{language}:{set_id}:{card_number}:{variant}"
+            card_info_en,
+            variant,
+            force,
+            localized_name,
+            f"{language}:{set_id}:{card_number}:{variant}",
         ):
             return False, "", "", 0, 0
 
@@ -676,7 +636,9 @@ async def add_card_workflow(
         print(f"Error: {e}", file=sys.stderr)
         return False, "", "", 0, 0
     except Exception as e:
-        print(f"Unexpected error adding card {set_id}:{card_number}: {e}", file=sys.stderr)
+        print(
+            f"Unexpected error adding card {set_id}:{card_number}: {e}", file=sys.stderr
+        )
         return False, "", "", 0, 0
 
 
@@ -718,8 +680,8 @@ async def handle_add(args: argparse.Namespace) -> int:
     # Parse the input to determine if it contains multiple cards
     card_input = args.card
 
-    # Check for comma-separated cards (e.g., de:me01:136,137,138)
-    if "," in card_input or "-" in card_input.split(":")[-1]:
+    # Check for comma-separated cards (e.g., me01:136h,137,138r)
+    if "," in card_input:
         # Multi-card input
         return await handle_add_multiple(args, card_input, context)
 
@@ -732,7 +694,13 @@ async def handle_add(args: argparse.Namespace) -> int:
     try:
         # Use shared workflow for adding card
         success, localized_name, tcgdex_id, old_qty, new_qty = await add_card_workflow(
-            set_id, card_number, variant, language, args.force, quantity=1, show_image=True
+            set_id,
+            card_number,
+            variant,
+            language,
+            args.force,
+            quantity=1,
+            show_image=True,
         )
 
         if not success:
@@ -754,123 +722,92 @@ async def handle_add(args: argparse.Namespace) -> int:
 async def handle_add_multiple(
     args: argparse.Namespace, card_input: str, context: session.SessionContext
 ) -> int:
-    """Handle adding multiple cards at once.
+    """Handle adding multiple cards at once with per-card variant support.
 
     Args:
         args: Parsed command-line arguments
-        card_input: Input string with multiple cards
+        card_input: Input string with multiple cards (e.g., me01:136h,137,138r)
         context: Session context
 
     Returns:
         Exit code (0 for success, 1 if all failed)
     """
-    # Parse the base format to extract language, set, and card list
-    # Format examples:
-    #  de:me01:136,137,138
-    #  de:me01:136-140
-    #  de:me01:136,138-140,145
-    #  de:me01:136,137,138:holo
-    #  136,137,138  (with context)
+    # Parse to get language and set_id from first card
+    # This validates the format and extracts common info
+    try:
+        language, set_id, _, _ = parse_card_spec(
+            card_input, context, require_variant=False
+        )
+    except ValueError as e:
+        return handle_cli_error(e, "parsing card input")
 
+    # Now parse the full card list with individual variants
     parts = card_input.split(":")
 
-    # Determine format and extract components
-    if len(parts) >= 3:
-        # Full format: de:me01:136,137,138[:variant]
-        language = parts[0].strip().lower()
-        set_id = parts[1].strip().lower()
-        cards_and_variant = ":".join(parts[2:])  # Rejoin in case there's a variant
-
-        # Check if variant is specified
-        if cards_and_variant.count(":") > 0:
-            # Has variant: 136,137:holo
-            cards_str, variant = cards_and_variant.rsplit(":", 1)
-            variant = variant.strip().lower()
-        else:
-            # No variant: 136,137,138
-            cards_str = cards_and_variant
-            variant = "normal"
-
-    elif len(parts) == 1 or len(parts) == 2:
-        # Shorthand format: 136,137,138 or 136,137:holo
-        if not context or not context.is_valid():
-            print(
-                "Error: No context set. Use full format: lang:set:card1,card2,card3",
-                file=sys.stderr,
-            )
-            return 1
-
-        # Type assertions: context.is_valid() guarantees these are not None
-        assert context.language is not None
-        assert context.set_id is not None
-
-        language = context.language
-        set_id = context.set_id
-
-        # Check if variant specified
-        if len(parts) == 2 and "," not in parts[1]:
-            # Format: 136:holo (but this should be caught as single card)
-            cards_str = parts[0]
-            variant = parts[1].strip().lower()
-        elif len(parts) == 2:
-            # Format: 136,137:holo
-            cards_str, variant = parts[0], parts[1].strip().lower()
-        else:
-            # Format: 136,137,138
-            cards_str = parts[0]
-            variant = "normal"
+    # Extract the cards portion (last part contains the card list)
+    if len(parts) == 1:
+        # Format: 136h,137,138r (with context)
+        cards_str = parts[0]
+    elif len(parts) == 2:
+        # Format: me01:136h,137,138r
+        cards_str = parts[1]
+    elif len(parts) == 3:
+        # Format: de:me01:136h,137,138r
+        cards_str = parts[2]
     else:
         print(f"Error: Invalid format: {card_input}", file=sys.stderr)
         return 1
 
-    # Validate language
+    # Parse card list with per-card variants
     try:
-        validate_language(language)
-        validate_variant(variant)
+        card_variants = parse_card_list_with_variants(cards_str)
     except ValueError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
+        return handle_cli_error(e, "parsing card list")
 
-    # Parse card list
-    try:
-        card_numbers = parse_card_list(cards_str)
-    except ValueError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
-
-    if not card_numbers:
+    if not card_variants:
         print("Error: No card numbers provided", file=sys.stderr)
         return 1
 
     # Show what we're about to add
-    print(
-        f"Adding {len(card_numbers)} cards from {language}:{set_id} (variant: {variant})..."
-    )
+    print(f"Adding {len(card_variants)} cards from {language}:{set_id}...")
 
-    # Add each card
+    # Add each card with its specific variant
     success_count = 0
     errors = []
 
-    for card_number in card_numbers:
+    for card_number, variant in card_variants:
         try:
             # Use shared workflow for adding card
-            success, localized_name, tcgdex_id, old_qty, new_qty = await add_card_workflow(
-                set_id, card_number, variant, language, args.force, quantity=1, show_image=False
+            (
+                success,
+                localized_name,
+                tcgdex_id,
+                old_qty,
+                new_qty,
+            ) = await add_card_workflow(
+                set_id,
+                card_number,
+                variant,
+                language,
+                args.force,
+                quantity=1,
+                show_image=False,
             )
 
             if not success:
-                # Check if it was a variant validation failure
-                if "Variant" in str(errors[-1]) if errors else False:
-                    errors.append(
-                        f"  ✗ {card_number}: Variant '{variant}' not available (use --force to override)"
-                    )
+                errors.append(
+                    f"  ✗ {card_number}{variant[0] if variant != 'normal' else ''}: Failed to add"
+                )
                 continue
 
-            # Show progress
+            # Show progress with variant indicator
+            variant_suffix = "" if variant == "normal" else f" ({variant})"
             if new_qty == 1:
-                print(f"  ✓ {card_number}: {localized_name}")
+                print(f"  ✓ {card_number}{variant_suffix}: {localized_name}")
             else:
-                print(f"  ✓ {card_number}: {localized_name} (qty: {new_qty})")
+                print(
+                    f"  ✓ {card_number}{variant_suffix}: {localized_name} (qty: {new_qty})"
+                )
 
             success_count += 1
 
@@ -880,7 +817,7 @@ async def handle_add_multiple(
             errors.append(f"  ✗ {card_number}: Unexpected error: {e}")
 
     # Show summary
-    print(f"\n✓ Added {success_count}/{len(card_numbers)} cards")
+    print(f"\n✓ Added {success_count}/{len(card_variants)} cards")
 
     if errors:
         print(f"\n⚠ {len(errors)} errors occurred:", file=sys.stderr)
@@ -1968,13 +1905,13 @@ def create_parser() -> argparse.ArgumentParser:
         description="Manage your Pokemon TCG card collection (supports multiple languages)",
         epilog="Examples: pkm add de:me01:136  or  pkm add de:me01:136:holo  or  pkm cache --refresh",
     )
-    
+
     # Add version argument
     parser.add_argument(
         "--version",
         action="version",
         version=f"%(prog)s {__version__}",
-        help="Show version information and exit"
+        help="Show version information and exit",
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
@@ -1983,7 +1920,7 @@ def create_parser() -> argparse.ArgumentParser:
     add_parser = subparsers.add_parser("add", help="Add a card to collection")
     add_parser.add_argument(
         "card",
-        help="Card format: lang:set:num[:variant] OR num (with context) OR lang:set:num1,num2,num3 (multiple cards)",
+        help="Card format: [lang:]set:card[variant] (h=holo, r=reverse, f=firstEdition) | Multiple: set:card1[v],card2[v] | Examples: me01:136h, de:me01:136,137r,138",
     )
     add_parser.add_argument(
         "--force",
@@ -1996,12 +1933,12 @@ def create_parser() -> argparse.ArgumentParser:
     rm_parser = subparsers.add_parser("rm", help="Remove a card from collection")
     rm_parser.add_argument(
         "card",
-        help="Card in format: lang:set_id:card_number[:variant] or just lang:set_id:card_number with --all",
+        help="Card format: [lang:]set:card[variant] (h=holo, r=reverse, f=firstEdition) | Use --all to remove all variants | Examples: me01:136h, de:me01:136",
     )
     rm_parser.add_argument(
         "--all",
         action="store_true",
-        help="Remove all variants of the card (no variant needed in card spec)",
+        help="Remove all variants of the card (variant suffix not needed)",
     )
 
     # List command
