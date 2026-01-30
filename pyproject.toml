@@ -9,10 +9,7 @@ description = "CLI tool for managing Pokemon TCG card collections (multi-languag
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "tcgdex-sdk>=1.0.0",
-    "fastapi>=0.104.0",
-    "uvicorn>=0.24.0",
-    "httpx>=0.28.1",
+    "tcgdex-sdk>=1.0.0",  # Core dependency for TCGdex API access
 ]
 
 [project.optional-dependencies]
@@ -22,7 +19,8 @@ dev = [
     "mypy>=1.8.0",
 ]
 web = [
-    "plotly>=5.18.0",  # For interactive charts in analytics page
+    "fastapi>=0.104.0",    # Web interface framework
+    "uvicorn>=0.24.0",     # ASGI server for FastAPI
 ]
 
 [project.scripts]
