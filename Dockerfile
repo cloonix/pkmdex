@@ -9,8 +9,8 @@ RUN pip install --no-cache-dir uv
 # Copy only requirements files first for better caching
 COPY pyproject.toml ./
 
-# Install dependencies
-RUN uv pip install --system --no-cache -e .
+# Install dependencies with web extras (includes fastapi, uvicorn)
+RUN uv pip install --system --no-cache -e ".[web]"
 
 # Runtime stage - minimal image
 FROM python:3.13-slim
