@@ -1238,6 +1238,86 @@ def handle_analyze(args: argparse.Namespace) -> int:
     return 0
 
 
+def handle_set_codes(args: argparse.Namespace) -> int:
+    """Handle set-codes command.
+
+    Args:
+        args: Parsed command arguments
+
+    Returns:
+        Exit code (0 for success, non-zero for error)
+    """
+    # No subcommand - show help
+    if not args.subcommand:
+        print("Usage: pkm set-codes {list|add|delete}")
+        print("\nManage PTCG set code mappings for deck export")
+        print("\nCommands:")
+        print("  list                List all set code mappings")
+        print("  add TCGDEX PTCG     Add or update a mapping")
+        print("  delete TCGDEX       Delete a mapping")
+        print("\nExamples:")
+        print("  pkm set-codes list")
+        print("  pkm set-codes add me01 ME1 --name-en 'Mega Evolution'")
+        print("  pkm set-codes add energy Energy --name-en 'Basic Energy'")
+        print("  pkm set-codes delete me03")
+        return 0
+
+    # List all mappings
+    if args.subcommand == "list":
+        mappings = db.get_all_set_code_mappings()
+
+        if not mappings:
+            print("No set code mappings configured.")
+            print("\nAdd mappings with: pkm set-codes add <tcgdex_id> <ptcg_code>")
+            return 0
+
+        print(
+            f"{'TCGdex ID':<12} {'PTCG Code':<12} {'English Name':<30} {'German Name':<30}"
+        )
+        print("─" * 90)
+
+        for mapping in mappings:
+            tcgdex_id = mapping["tcgdex_set_id"]
+            ptcg_code = mapping["ptcg_code"]
+            name_en = mapping["set_name_en"] or "—"
+            name_de = mapping["set_name_de"] or "—"
+
+            # Truncate names if too long
+            if len(name_en) > 29:
+                name_en = name_en[:26] + "..."
+            if len(name_de) > 29:
+                name_de = name_de[:26] + "..."
+
+            print(f"{tcgdex_id:<12} {ptcg_code:<12} {name_en:<30} {name_de:<30}")
+
+        print("─" * 90)
+        print(f"Total: {len(mappings)} mappings")
+        return 0
+
+    # Add or update a mapping
+    if args.subcommand == "add":
+        db.add_set_code_mapping(
+            tcgdex_set_id=args.tcgdex_id,
+            ptcg_code=args.ptcg_code,
+            set_name_en=args.name_en,
+            set_name_de=args.name_de,
+            notes=args.notes,
+        )
+        print(f"✓ Added mapping: {args.tcgdex_id} → {args.ptcg_code}")
+        return 0
+
+    # Delete a mapping
+    if args.subcommand == "delete":
+        deleted = db.delete_set_code_mapping(args.tcgdex_id)
+        if deleted:
+            print(f"✓ Deleted mapping: {args.tcgdex_id}")
+        else:
+            print(f"Warning: No mapping found for {args.tcgdex_id}", file=sys.stderr)
+        return 0
+
+    return 0
+
+
 def create_parser() -> argparse.ArgumentParser:
     """Create argument parser.
 
@@ -1415,6 +1495,37 @@ def create_parser() -> argparse.ArgumentParser:
         "--stats", action="store_true", help="Show statistics instead of card list"
     )
 
+    # Set-codes command
+    set_codes_parser = subparsers.add_parser(
+        "set-codes", help="Manage PTCG set code mappings for deck export"
+    )
+    set_codes_subparsers = set_codes_parser.add_subparsers(
+        dest="subcommand", help="Set code management commands"
+    )
+
+    # set-codes list
+    list_codes_parser = set_codes_subparsers.add_parser(
+        "list", help="List all set code mappings"
+    )
+
+    # set-codes add
+    add_code_parser = set_codes_subparsers.add_parser(
+        "add", help="Add or update a set code mapping"
+    )
+    add_code_parser.add_argument("tcgdex_id", help="TCGdex set ID (e.g., me01, sv01)")
+    add_code_parser.add_argument(
+        "ptcg_code", help="PTCG Live set code (e.g., ME1, SVI, PAL)"
+    )
+    add_code_parser.add_argument("--name-en", help="English set name (optional)")
+    add_code_parser.add_argument("--name-de", help="German set name (optional)")
+    add_code_parser.add_argument("--notes", help="Additional notes (optional)")
+
+    # set-codes delete
+    delete_code_parser = set_codes_subparsers.add_parser(
+        "delete", help="Delete a set code mapping"
+    )
+    delete_code_parser.add_argument("tcgdex_id", help="TCGdex set ID to delete")
+
     return parser
 
 
@@ -1458,6 +1569,8 @@ def main() -> None:
         exit_code = asyncio.run(handle_cache(args))
     elif args.command == "analyze":
         exit_code = handle_analyze(args)
+    elif args.command == "set-codes":
+        exit_code = handle_set_codes(args)
     else:
         parser.print_help()
         exit_code = 1
