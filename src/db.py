@@ -153,6 +153,19 @@ CREATE TABLE IF NOT EXISTS set_cache (
     serie_name TEXT,
     cached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- PTCG set code mappings (for deck export)
+CREATE TABLE IF NOT EXISTS set_code_mappings (
+    tcgdex_set_id TEXT PRIMARY KEY,
+    ptcg_code TEXT NOT NULL,
+    set_name_en TEXT,
+    set_name_de TEXT,
+    notes TEXT,
+    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_set_code_ptcg ON set_code_mappings(ptcg_code);
 """
 
 
@@ -1409,3 +1422,95 @@ def import_from_json_dict(import_data: dict) -> dict:
                 "cards_to_sync": len(cards_to_fetch),  # Number of unique cards to sync
                 "needs_sync": True,  # Flag to indicate sync is required
             }
+
+
+# === PTCG Set Code Mapping Operations ===
+
+
+def get_ptcg_set_code(tcgdex_set_id: str) -> Optional[str]:
+    """Get official PTCG set code from TCGdex set ID.
+
+    Args:
+        tcgdex_set_id: TCGdex set identifier (e.g., "me01")
+
+    Returns:
+        PTCG set code (e.g., "ME1") or None if not found
+    """
+    with get_connection() as conn:
+        cursor = conn.execute(
+            "SELECT ptcg_code FROM set_code_mappings WHERE tcgdex_set_id = ?",
+            (tcgdex_set_id.lower(),),
+        )
+        row = cursor.fetchone()
+        return row[0] if row else None
+
+
+def add_set_code_mapping(
+    tcgdex_set_id: str,
+    ptcg_code: str,
+    set_name_en: Optional[str] = None,
+    set_name_de: Optional[str] = None,
+    notes: Optional[str] = None,
+) -> None:
+    """Add or update a PTCG set code mapping.
+
+    Args:
+        tcgdex_set_id: TCGdex set ID (e.g., "me01")
+        ptcg_code: Official PTCG set code (e.g., "ME1")
+        set_name_en: Optional English set name (preserves existing if None)
+        set_name_de: Optional German set name (preserves existing if None)
+        notes: Optional notes about the mapping (preserves existing if None)
+    """
+    with get_connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO set_code_mappings 
+            (tcgdex_set_id, ptcg_code, set_name_en, set_name_de, notes, updated_at)
+            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(tcgdex_set_id) DO UPDATE SET
+                ptcg_code = excluded.ptcg_code,
+                set_name_en = COALESCE(excluded.set_name_en, set_code_mappings.set_name_en),
+                set_name_de = COALESCE(excluded.set_name_de, set_code_mappings.set_name_de),
+                notes = COALESCE(excluded.notes, set_code_mappings.notes),
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (tcgdex_set_id.lower(), ptcg_code, set_name_en, set_name_de, notes),
+        )
+        conn.commit()
+
+
+def get_all_set_code_mappings() -> list[dict]:
+    """Get all PTCG set code mappings.
+
+    Returns:
+        List of mapping dictionaries
+    """
+    with get_connection() as conn:
+        cursor = conn.execute(
+            """
+            SELECT tcgdex_set_id, ptcg_code, set_name_en, set_name_de, notes, 
+                   added_at, updated_at
+            FROM set_code_mappings
+            ORDER BY tcgdex_set_id
+            """
+        )
+        return rows_to_dicts(cursor)
+
+
+def delete_set_code_mapping(tcgdex_set_id: str) -> bool:
+    """Delete a PTCG set code mapping.
+
+    Args:
+        tcgdex_set_id: TCGdex set ID to remove
+
+    Returns:
+        True if deleted, False if not found
+    """
+    with get_connection() as conn:
+        cursor = conn.execute(
+            "DELETE FROM set_code_mappings WHERE tcgdex_set_id = ? RETURNING *",
+            (tcgdex_set_id.lower(),),
+        )
+        deleted = cursor.fetchone()
+        conn.commit()
+        return deleted is not None
